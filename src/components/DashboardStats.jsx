@@ -45,35 +45,37 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
     ? sortedSalaryEvents[sortedSalaryEvents.length - 1].salary 
     : 0;
 
-  // 2. Calculate cumulative base salary earned over time
-  let cumulativeBaseEarned = 0;
-  if (sortedSalaryEvents.length > 0) {
-    // We assume the timeline goes from the first event (or baseline date) to the latest event (both salary and comp events)
-    const allDates = [...salaryEvents, ...compEvents].map(e => e.date);
-    allDates.push(baselineDate);
-    allDates.sort();
-    
-    const minDate = baselineDate;
-    const maxDate = allDates[allDates.length - 1];
+  // Get cutoff date representing the start of the current month (i.e. end of the last completed month)
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+  const cutoffDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
 
-    // Integrate area under step function
+  // 2. Calculate cumulative base salary earned over time (up to the last completed month)
+  let cumulativeBaseEarned = 0;
+  if (sortedSalaryEvents.length > 0 && baselineDate < cutoffDate) {
     for (let i = 0; i < sortedSalaryEvents.length; i++) {
       const currentEvent = sortedSalaryEvents[i];
       const nextEvent = sortedSalaryEvents[i + 1];
       
-      const startDate = currentEvent.date < minDate ? minDate : currentEvent.date;
-      const endDate = nextEvent ? nextEvent.date : maxDate;
+      let segmentStart = currentEvent.date;
+      if (segmentStart < baselineDate) segmentStart = baselineDate;
+      if (segmentStart > cutoffDate) segmentStart = cutoffDate;
       
-      const durationYears = getYearDiff(startDate, endDate);
+      let segmentEnd = nextEvent ? nextEvent.date : cutoffDate;
+      if (segmentEnd < baselineDate) segmentEnd = baselineDate;
+      if (segmentEnd > cutoffDate) segmentEnd = cutoffDate;
+      
+      const durationYears = getYearDiff(segmentStart, segmentEnd);
       if (durationYears > 0) {
         cumulativeBaseEarned += currentEvent.salary * durationYears;
       }
     }
   }
 
-  // 3. Sum of bonus, grant, and vest
+  // 3. Sum of bonus, grant, and vest (realized options filtered up to the last completed month)
   const totalBonus = compEvents
-    .filter(e => e.type === 'bonus')
+    .filter(e => e.type === 'bonus' && e.date < cutoffDate)
     .reduce((sum, e) => sum + Number(e.amount), 0);
 
   const totalGrant = compEvents
@@ -81,7 +83,7 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
     .reduce((sum, e) => sum + Number(e.amount), 0);
 
   const totalVest = compEvents
-    .filter(e => e.type === 'vest')
+    .filter(e => e.type === 'vest' && e.date < cutoffDate)
     .reduce((sum, e) => sum + Number(e.amount), 0);
 
   // 4. Realized Cumulative Compensation = Base Salary Earned + Bonus + Vests
