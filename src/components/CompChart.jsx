@@ -441,7 +441,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
           <div className="empty-state" style={{ height: '100%' }}>
             <span className="empty-state-icon" style={{ fontSize: '3rem' }}>📈</span>
             <h3>No compensation details entered</h3>
-            <p>Select a preset below or use the sidebar form to add salary and bonus events.</p>
+            <p>Use the sidebar form to add your base salary and milestones, or import a JSON backup.</p>
           </div>
         ) : (
           <svg className="chart-svg" viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}>

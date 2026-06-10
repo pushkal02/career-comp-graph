@@ -26,7 +26,7 @@ const getInitialState = () => {
   }
 
   return {
-    salaryEvents: [{ id: 's_default', date: savedStartDate, salary: 80000, type: 'hike', title: 'Starting Salary' }],
+    salaryEvents: [],
     compEvents: [],
     startDate: savedStartDate,
     currency: savedCurrency,
@@ -115,14 +115,7 @@ export default function App() {
 
   // Delete a salary event
   const handleDeleteSalaryEvent = (id) => {
-    setSalaryEvents((prev) => {
-      const updated = prev.filter(e => e.id !== id);
-      // Ensure we don't end up with an empty salary list which breaks coordinates
-      if (updated.length === 0) {
-        return [{ id: 's_default', date: startDate, salary: 80000, type: 'hike', title: 'Starting Salary' }];
-      }
-      return updated;
-    });
+    setSalaryEvents((prev) => prev.filter(e => e.id !== id));
   };
 
   // Delete a comp event
@@ -147,7 +140,7 @@ export default function App() {
   // Clear all data
   const handleClearAll = () => {
     if (window.confirm("Are you sure you want to clear all data? This will empty the graph.")) {
-      setSalaryEvents([{ id: 's_default', date: startDate, salary: 80000, type: 'hike', title: 'Starting Salary' }]);
+      setSalaryEvents([]);
       setCompEvents([]);
     }
   };
