@@ -219,6 +219,10 @@ export default function App() {
             <span>{userName ? `${userName}'s CompGraph` : 'CompGraph'}</span>
           </h1>
           <p>Visually plan and analyze your base salary milestones, cash bonuses, and equity grants over time.</p>
+          <p style={{ color: 'var(--color-primary)', fontSize: '0.8rem', marginTop: '0.35rem', fontWeight: '500', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+            <span>💡</span>
+            <span>Recommendation: Export your JSON regularly to keep offline backups of your milestones.</span>
+          </p>
           {userName && (
             <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
               Dashboard for: <strong style={{ color: 'var(--text-secondary)' }}>{userName}</strong> •{' '}
@@ -228,10 +232,6 @@ export default function App() {
               >
                 Edit Profile
               </button>
-              <span style={{ margin: '0 0.5rem', opacity: 0.5 }}>|</span>
-              <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>
-                💡 Recommendation: Export your JSON regularly to keep offline backups of your milestones.
-              </span>
             </p>
           )}
         </div>
