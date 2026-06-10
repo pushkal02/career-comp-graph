@@ -23,18 +23,19 @@ Instead of traditional, rigid chart templates, CompGraph uses a **custom high-fi
 * **Concentric Doughnut Rings**: If multiple events (e.g., RSU vesting and a cash bonus) land on the exact same month, the larger event renders as a clean, hollow **doughnut ring** surrounding the smaller event's filled circle. This keeps each event individually hoverable and matches area proportionality mathematically ($R_{outer} = \sqrt{R_{inner}^2 + R_{base}^2}$).
 
 ### 3. Personalization & Profile Modal
-* **Onboarding Prompt**: Implemented a glassmorphic startup overlay modal prompting for your Full Name if it is not stored in browser cache. Explicitly states and guarantees that all input data is stored 100% client-side in your local browser and never sent to a backend.
+* **Onboarding Prompt**: Implemented a glassmorphic startup overlay modal prompting for your Full Name if it is not stored in browser cache. Explicitly states and guarantees that all input data is stored 100% client-side in your local browser and never sent to a backend. **No email address or personal credentials are ever requested**.
 * **Personalized Header**: Greets the user dynamically (e.g., *"Pushkal Pandey's CompGraph"*) in the title bar.
 * **Profile Editing**: Quick-link to edit your profile name at any time, instantly updating dashboard labels and storage values.
 
 ### 4. Smart Realized Earnings Metrics
-* Integrates the area under the step-line from your configured timeline start month to your latest milestone to compute the exact **Cumulative Base Salary Earned**.
-* Aggregates base salary, cash bonuses, and vested stock to report your **Realized Career Earnings**.
+* Integrates the area under the step-line from your configured timeline start month up to the end of the **last completed calendar month** (dynamically derived relative to the current date) to compute the exact **Cumulative Base Salary Earned**.
+* Aggregates base salary, cash bonuses, and vested stock filtered up to the last completed month to report your **Realized Career Earnings**. Future events/milestones do not prematurely inflate realized earnings.
 * Separately tracks paper **Stock Grants** to maintain a clear line between potential and realized compensation.
 
 ### 5. Multi-Currency Support & Input Flexibility
 * Switch formatting locales dynamically (USD, INR, GBP, EUR, JPY, CAD, AUD, SGD).
-* Renders shorthand symbols (e.g., `₹15k`, `£80k`, `€3k`) and dynamic form input labels based on the active selection.
+* Renders shorthand symbols (e.g., `$15k`, `£80k`, `€3k`) and dynamic form input labels based on the active selection.
+* **Special INR Formatting**: Formats INR values using a corporate-preferred Indian grouping style. Values in the Lakhs range (less than 1 Crore) are formatted in thousands (e.g., `₹18,49k` for 18.49L), and values in the Crores range are formatted in Lakhs (e.g., `₹1,52L` for 1.52Cr).
 * **Flexible Precision & Negative Inputs**: Switched number input constraints to `step="any"` and removed `min` bounds. This allows entering precise numbers (like `105,250`) without browser "nearest numbers" errors, and fully supports negative entries (e.g. pay cuts, salary decreases, or clawbacks).
 
 ### 6. Day & Night Theme Selector
@@ -44,7 +45,9 @@ Instead of traditional, rigid chart templates, CompGraph uses a **custom high-fi
 
 ### 7. Graph Export & Data Backups
 * **High-Resolution PNG Download**: Render and save the career progression SVG chart directly as a high-quality PNG image to share or insert into documents. The active theme styling is automatically preserved in the export.
-* **Export & Import JSON**: Export your data payload alongside your profile name and email credentials. Click **Import JSON** to load a backup file (via the HTML5 `FileReader` API), validate the content, and restore your complete timeline and profile settings instantly.
+* **Persistent Local Storage**: Timeline data is saved in your browser's persistent local storage with no expiration date.
+* **Backup Export & Import**: Displays helpful recommendation notifications advising users to periodically **Export JSON** to keep offline backups. Click **Import JSON** to load a backup file (via the HTML5 `FileReader` API), validate the content, and restore your complete timeline and profile settings instantly.
+* **Clean Sandbox State**: Launches into a completely clean, empty sandbox graph state with no preset baseline salary. All entries can be edited, deleted, or cleared.
 
 ---
 
