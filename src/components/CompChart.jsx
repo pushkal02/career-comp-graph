@@ -257,13 +257,44 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
     }
   };
 
-  // Short currency formatter (e.g. $15k)
+  // Short currency formatter (e.g. $15k or ₹18,49k / ₹1,52L)
   const formatShortCurrency = (val) => {
     const symbol = getCurrencySymbol(currency || 'USD');
-    if (val >= 1000) {
-      return `${symbol}${(val / 1000).toFixed(0)}k`;
+    const isINR = (currency || 'USD') === 'INR';
+    const isNegative = val < 0;
+    const absVal = Math.abs(val);
+    
+    if (isINR) {
+      // For INR, use Indian grouping style:
+      // If >= 1 Crore (10,000,000), format in Lakhs: e.g. 1.52Cr -> ₹1,52L
+      // If < 1 Crore and >= 1 Thousand, format in thousands: e.g. 18.49L -> ₹18,49k
+      const approxThousand = Math.round(absVal / 1000) * 1000;
+      
+      if (approxThousand >= 10000000) {
+        const roundedLakh = Math.round(absVal / 100000) * 100000;
+        const formatted = new Intl.NumberFormat('en-IN').format(roundedLakh);
+        const sliced = formatted.slice(0, -7); // Remove the last 5 digits and commas (",00,000")
+        return `${isNegative ? '-' : ''}${symbol}${sliced}L`;
+      }
+      
+      if (approxThousand >= 1000) {
+        const formatted = new Intl.NumberFormat('en-IN').format(approxThousand);
+        const sliced = formatted.slice(0, -4); // Remove the last 3 digits and comma (",000")
+        return `${isNegative ? '-' : ''}${symbol}${sliced}k`;
+      }
+      
+      const formatted = new Intl.NumberFormat('en-IN').format(absVal);
+      return `${isNegative ? '-' : ''}${symbol}${formatted}`;
+    } else {
+      // Non-INR formatting (Western style formatting)
+      if (absVal >= 1000000) {
+        return `${isNegative ? '-' : ''}${symbol}${parseFloat((absVal / 1000000).toFixed(2))}M`;
+      }
+      if (absVal >= 1000) {
+        return `${isNegative ? '-' : ''}${symbol}${parseFloat((absVal / 1000).toFixed(0))}k`;
+      }
+      return `${isNegative ? '-' : ''}${symbol}${absVal}`;
     }
-    return `${symbol}${val}`;
   };
 
   const formatFullCurrency = (val) => {
