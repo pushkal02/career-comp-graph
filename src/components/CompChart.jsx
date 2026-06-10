@@ -378,6 +378,10 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
         <div>
           <h2 style={{ fontSize: '1.25rem', fontWeight: '700' }}>Compensation Progression Timeline</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Proportional financial event circles mapped on base salary line</p>
+          <p style={{ color: 'var(--color-primary)', fontSize: '0.75rem', marginTop: '0.35rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <span>💡</span>
+            <span>Recommendation: Export your JSON data regularly to keep offline backups of your milestones.</span>
+          </p>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.75rem' }}>
           {/* Legends */}

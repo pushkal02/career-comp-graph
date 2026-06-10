@@ -5,11 +5,36 @@ import DashboardStats from './components/DashboardStats';
 import { Sparkles, Sun, Moon } from 'lucide-react';
 
 const getInitialState = () => {
+  const savedTheme = localStorage.getItem('comp_graph_theme') || 'dark';
+
+  // 7-day local storage expiration check
+  const savedTimestamp = localStorage.getItem('comp_graph_storage_timestamp');
+  if (savedTimestamp) {
+    const ageMs = Date.now() - Number(savedTimestamp);
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    if (ageMs > sevenDaysMs) {
+      // Clear expired career progression data
+      localStorage.removeItem('comp_graph_salary_events');
+      localStorage.removeItem('comp_graph_comp_events');
+      localStorage.removeItem('comp_graph_start_date');
+      localStorage.removeItem('comp_graph_currency');
+      localStorage.removeItem('comp_graph_user_name');
+      localStorage.removeItem('comp_graph_storage_timestamp');
+
+      return {
+        salaryEvents: [],
+        compEvents: [],
+        startDate: '2024-01',
+        currency: 'USD',
+        theme: savedTheme
+      };
+    }
+  }
+
   const savedSalary = localStorage.getItem('comp_graph_salary_events');
   const savedComp = localStorage.getItem('comp_graph_comp_events');
   const savedStartDate = localStorage.getItem('comp_graph_start_date') || '2024-01';
   const savedCurrency = localStorage.getItem('comp_graph_currency') || 'USD';
-  const savedTheme = localStorage.getItem('comp_graph_theme') || 'dark';
 
   if (savedSalary && savedComp) {
     try {
@@ -203,6 +228,10 @@ export default function App() {
               >
                 Edit Profile
               </button>
+              <span style={{ margin: '0 0.5rem', opacity: 0.5 }}>|</span>
+              <span style={{ color: 'var(--color-primary)', fontWeight: 600 }}>
+                💡 Recommendation: Export your JSON regularly to keep offline backups of your milestones.
+              </span>
             </p>
           )}
         </div>
