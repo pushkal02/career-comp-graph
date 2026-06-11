@@ -20,7 +20,9 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
     vest: true
   });
 
-  // Detect container size for responsiveness
+  // Detect container size for responsiveness.
+  // is3D is included in the dep array so the observer re-attaches to the freshly
+  // mounted div every time the user switches back from 3D → 2D mode.
   useEffect(() => {
     if (!containerRef.current) return;
     const resizeObserver = new ResizeObserver((entries) => {
@@ -35,7 +37,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
     });
     resizeObserver.observe(containerRef.current);
     return () => resizeObserver.disconnect();
-  }, []);
+  }, [is3D]);
 
   // Constants
   const padding = { top: 40, right: 60, bottom: 50, left: 80 };
