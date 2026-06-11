@@ -130,5 +130,5 @@ interface CompEvent {
 
 ---
 
-Created by Pushkal Pandey with love ❤️
+Created by Pushkal Pandey with ❤️
 
