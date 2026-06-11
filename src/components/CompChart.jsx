@@ -963,6 +963,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
           startDate={startDate}
           currency={currency}
           formatFullCurrency={formatFullCurrency}
+          formatShortCurrency={formatShortCurrency}
         />
       )}
     </div>
@@ -1287,9 +1288,11 @@ function CompanyEarningsList({ salaryEvents, compEvents, startDate, currency, fo
 }
 
 // Periodic Earnings List helper component
-function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, formatFullCurrency }) {
+function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, formatFullCurrency, formatShortCurrency }) {
   const [periodType, setPeriodType] = useState('year'); // 'year', 'half', 'quarter'
   const [viewMode, setViewMode] = useState('chart'); // 'chart' or 'list'
+  const [showTotalComp, setShowTotalComp] = useState(true);
+  const [showGrowth, setShowGrowth] = useState(true);
   const [hoveredBar, setHoveredBar] = useState(null);
   const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
 
@@ -1329,7 +1332,6 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
     return normA.localeCompare(normB);
   });
 
-  // Determine the range of years to generate (up to current year)
   const maxYear = currentYear;
 
   const years = [];
@@ -1337,7 +1339,6 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
     years.push(y);
   }
 
-  // Generate periods
   const periods = [];
   years.forEach(y => {
     if (periodType === 'year') {
@@ -1388,10 +1389,8 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
     }
   });
 
-  // Calculate earnings for each period (current/future periods show projected earnings)
   const periodsData = periods.map(p => {
     let baseEarned = 0;
-    // Calculate salary contributions
     if (sortedSalaryEvents.length > 0) {
       for (let i = 0; i < sortedSalaryEvents.length; i++) {
         const currentEvent = sortedSalaryEvents[i];
@@ -1407,7 +1406,6 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
         let segmentEnd = normNext ? normNext : p.end;
         if (segmentEnd < normBaseline) segmentEnd = normBaseline;
 
-        // Find overlap between [segmentStart, segmentEnd] and period [p.start, p.end]
         const overlap = getOverlapYears(segmentStart, segmentEnd, p.start, p.end);
         if (overlap > 0) {
           baseEarned += convertCurrency(currentEvent.salary, currentEvent.currency, currency) * overlap;
@@ -1415,7 +1413,6 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
       }
     }
 
-    // Sum comp events falling in this period
     const bonusEarned = compEvents
       .filter(e => {
         const normDate = normalizeDate(e.date);
@@ -1444,7 +1441,6 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
     };
   });
 
-  // Calculate growth percentages
   for (let i = 0; i < periodsData.length; i++) {
     const current = periodsData[i];
     if (i > 0) {
@@ -1462,61 +1458,89 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
   const todayDate = new Date();
   const todayStr = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
 
-  // Only include periods that are ongoing or completed (i.e. start date is on or before today)
   const activePeriods = periodsData.filter(p => {
     return p.start <= todayStr;
   });
 
   const maxPeriodTotal = Math.max(...activePeriods.map(p => p.total), 1);
 
-  // Compute Growth Chart scaling bounds
+  // Left Y axis (Total Comp) scale logic
+  const rawMaxTotal = Math.max(...activePeriods.map(p => p.total), 1000);
+  const stepRaw = rawMaxTotal / 4;
+  const magnitude = Math.pow(10, Math.floor(Math.log10(stepRaw)));
+  const normalizedStep = stepRaw / (magnitude || 1);
+  let cleanStep;
+  if (normalizedStep <= 1) cleanStep = 1;
+  else if (normalizedStep <= 2) cleanStep = 2;
+  else if (normalizedStep <= 5) cleanStep = 5;
+  else cleanStep = 10;
+  cleanStep = cleanStep * (magnitude || 1);
+  const maxYComp = cleanStep * 4;
+
+  // Right Y axis (Growth %) scale logic
   const growthValues = activePeriods
     .map(p => p.growth)
     .filter(g => g !== null && g !== undefined);
+  const maxAbsGrowth = growthValues.length > 0 ? Math.max(...growthValues.map(Math.abs), 20) : 20;
+  const stepGrowthRaw = maxAbsGrowth / 2;
+  const magnitudeGrowth = Math.pow(10, Math.floor(Math.log10(stepGrowthRaw)));
+  const normalizedStepGrowth = stepGrowthRaw / (magnitudeGrowth || 1);
+  let cleanStepGrowth;
+  if (normalizedStepGrowth <= 1) cleanStepGrowth = 1;
+  else if (normalizedStepGrowth <= 2) cleanStepGrowth = 2;
+  else if (normalizedStepGrowth <= 2.5) cleanStepGrowth = 2.5;
+  else if (normalizedStepGrowth <= 5) cleanStepGrowth = 5;
+  else cleanStepGrowth = 10;
+  cleanStepGrowth = cleanStepGrowth * (magnitudeGrowth || 1);
 
-  let minGrowth = 0;
-  let maxGrowth = 100;
+  const minGrowthScale = -2 * cleanStepGrowth;
+  const maxGrowthScale = 2 * cleanStepGrowth;
 
-  if (growthValues.length > 0) {
-    const rawMin = Math.min(...growthValues);
-    const rawMax = Math.max(...growthValues);
-    minGrowth = Math.min(rawMin, 0);
-    maxGrowth = Math.max(rawMax, 10);
-  }
-
-  // Ensure there is always negative space on the chart to show potential negative growth
-  if (minGrowth >= 0) {
-    minGrowth = -Math.max(20, maxGrowth * 0.25);
-  }
-
-  const growthRange = maxGrowth - minGrowth;
-  const paddingPct = growthRange * 0.15 || 10;
-  const scaleMin = minGrowth - paddingPct;
-  const scaleMax = maxGrowth + paddingPct;
-
-  const chartPadding = { top: 25, right: 20, bottom: 35, left: 60 };
+  const chartPadding = { top: 25, right: 60, bottom: 35, left: 60 };
   const chartHeight = 240 - chartPadding.top - chartPadding.bottom;
   const chartWidth = 680 - chartPadding.left - chartPadding.right;
 
+  const getYComp = (val) => {
+    const ratio = val / maxYComp;
+    return chartPadding.top + chartHeight - ratio * chartHeight;
+  };
+
   const getGrowthY = (val) => {
     if (val === null || val === undefined) return chartPadding.top + chartHeight;
-    const pct = (val - scaleMin) / (scaleMax - scaleMin);
-    return chartPadding.top + chartHeight - pct * chartHeight;
+    const ratio = (val - minGrowthScale) / (maxGrowthScale - minGrowthScale);
+    return chartPadding.top + chartHeight - ratio * chartHeight;
   };
 
   const zeroY = getGrowthY(0);
 
-  // Generate 5 evenly spaced Y ticks
-  const yTicksCount = 5;
-  const yTicks = [];
-  for (let i = 0; i < yTicksCount; i++) {
-    const val = scaleMin + (i * (scaleMax - scaleMin)) / (yTicksCount - 1);
-    yTicks.push(val);
-  }
-
   const numPeriods = activePeriods.length;
   const barGroupWidth = numPeriods > 0 ? chartWidth / numPeriods : chartWidth;
-  const barWidth = Math.min(32, barGroupWidth * 0.45);
+  const bothActive = showTotalComp && showGrowth;
+  const baseBarWidth = Math.min(28, barGroupWidth * 0.4);
+
+  let compBarWidth = baseBarWidth;
+  let growthBarWidth = baseBarWidth;
+  let compBarXOffset = 0;
+  let growthBarXOffset = 0;
+
+  if (bothActive) {
+    compBarWidth = Math.min(20, barGroupWidth * 0.3);
+    growthBarWidth = Math.min(20, barGroupWidth * 0.3);
+    const gap = Math.min(8, barGroupWidth * 0.1);
+    compBarXOffset = -(compBarWidth / 2 + gap / 2);
+    growthBarXOffset = growthBarWidth / 2 + gap / 2;
+  } else {
+    compBarWidth = baseBarWidth * 1.5;
+    growthBarWidth = baseBarWidth * 1.5;
+    compBarXOffset = 0;
+    growthBarXOffset = 0;
+  }
+
+  const getTooltipY = (p) => {
+    const compY = showTotalComp ? getYComp(p.total) : zeroY;
+    const growthY = showGrowth ? getGrowthY(p.growth || 0) : zeroY;
+    return Math.min(compY, growthY, zeroY);
+  };
 
   return (
     <div className="glass-panel" style={{ marginTop: '2rem', padding: '1.5rem', position: 'relative' }}>
@@ -1577,78 +1601,307 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
         </div>
       </div>
 
+      {/* Metrics filter pills */}
+      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700, marginRight: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Show Metrics:
+        </span>
+        <button
+          type="button"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.3rem',
+            padding: '0.2rem 0.55rem',
+            fontSize: '0.72rem',
+            borderRadius: '20px',
+            border: showTotalComp ? `1px solid var(--color-primary)` : '1px solid var(--border-color)',
+            background: showTotalComp ? `rgba(99, 102, 241, 0.12)` : 'transparent',
+            color: showTotalComp ? 'var(--text-primary)' : 'var(--text-muted)',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            fontWeight: 600
+          }}
+          onClick={() => {
+            if (showTotalComp && !showGrowth) return;
+            setShowTotalComp(!showTotalComp);
+          }}
+        >
+          <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-primary)', display: 'inline-block' }}></span>
+          Total Comp
+        </button>
+        <button
+          type="button"
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.3rem',
+            padding: '0.2rem 0.55rem',
+            fontSize: '0.72rem',
+            borderRadius: '20px',
+            border: showGrowth ? `1px solid var(--color-bonus)` : '1px solid var(--border-color)',
+            background: showGrowth ? `rgba(16, 185, 129, 0.12)` : 'transparent',
+            color: showGrowth ? 'var(--text-primary)' : 'var(--text-muted)',
+            cursor: 'pointer',
+            transition: 'all 0.15s ease',
+            fontWeight: 600
+          }}
+          onClick={() => {
+            if (showGrowth && !showTotalComp) return;
+            setShowGrowth(!showGrowth);
+          }}
+        >
+          <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-bonus)', display: 'inline-block' }}></span>
+          Growth %
+        </button>
+      </div>
+
       {viewMode === 'chart' ? (
-        <div style={{ position: 'relative', width: '100%', marginTop: '0.5rem' }}>
-          <svg viewBox="0 0 680 240" width="100%" style={{ overflow: 'visible', display: 'block' }}>
-            {/* Horizontal grid lines */}
-            {yTicks.map((tickVal, idx) => {
-              const y = getGrowthY(tickVal);
-              return (
-                <g key={idx}>
-                  <line
-                    x1={chartPadding.left}
-                    y1={y}
-                    x2={680 - chartPadding.right}
-                    y2={y}
-                    stroke="rgba(255, 255, 255, 0.05)"
-                    strokeDasharray="4 4"
-                  />
-                  <text
-                    x={chartPadding.left - 10}
-                    y={y + 4}
-                    textAnchor="end"
-                    fill="var(--text-muted)"
-                    fontSize="10px"
-                    fontFamily="var(--font-mono)"
-                  >
-                    {tickVal === 0 ? '0%' : `${tickVal > 0 ? '+' : ''}${tickVal.toFixed(0)}%`}
-                  </text>
-                </g>
-              );
-            })}
+        (!showTotalComp && !showGrowth) ? (
+          <div style={{ height: '240px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+            Please select at least one metric to display.
+          </div>
+        ) : (
+          <div style={{ position: 'relative', width: '100%', marginTop: '0.5rem' }}>
+            <svg viewBox="0 0 680 240" width="100%" style={{ overflow: 'visible', display: 'block' }}>
+              {/* Axis labels at the top */}
+              {showTotalComp && (
+                <text
+                  x={chartPadding.left}
+                  y={chartPadding.top - 10}
+                  textAnchor="start"
+                  fill="var(--color-primary)"
+                  fontSize="8px"
+                  fontWeight="800"
+                  style={{ letterSpacing: '0.05em' }}
+                >
+                  TOTAL COMP
+                </text>
+              )}
+              {showGrowth && (
+                <text
+                  x={680 - chartPadding.right}
+                  y={chartPadding.top - 10}
+                  textAnchor="end"
+                  fill="var(--color-bonus)"
+                  fontSize="8px"
+                  fontWeight="800"
+                  style={{ letterSpacing: '0.05em' }}
+                >
+                  GROWTH %
+                </text>
+              )}
 
-            {/* Zero line */}
-            <line
-              x1={chartPadding.left}
-              y1={zeroY}
-              x2={680 - chartPadding.right}
-              y2={zeroY}
-              stroke="rgba(255, 255, 255, 0.2)"
-              strokeWidth="1.5"
-            />
+              {/* Shared Horizontal grid lines (5 lines) */}
+              {Array.from({ length: 5 }).map((_, idx) => {
+                const y = chartPadding.top + chartHeight - (idx * chartHeight) / 4;
+                const compVal = (idx * maxYComp) / 4;
+                const growthVal = minGrowthScale + idx * cleanStepGrowth;
+                
+                return (
+                  <g key={idx}>
+                    <line
+                      x1={chartPadding.left}
+                      y1={y}
+                      x2={680 - chartPadding.right}
+                      y2={y}
+                      stroke="rgba(255, 255, 255, 0.05)"
+                      strokeDasharray="4 4"
+                    />
+                    
+                    {/* Left Axis ticks (Total Comp) */}
+                    {showTotalComp && (
+                      <text
+                        x={chartPadding.left - 10}
+                        y={y + 4}
+                        textAnchor="end"
+                        fill="rgba(99, 102, 241, 0.85)"
+                        fontSize="10px"
+                        fontFamily="var(--font-mono)"
+                        fontWeight="600"
+                      >
+                        {formatShortCurrency ? formatShortCurrency(compVal) : `${compVal}`}
+                      </text>
+                    )}
 
-            {/* Render Bars and Labels */}
-            {activePeriods.map((p, i) => {
-              const colCenterX = chartPadding.left + barGroupWidth * i + barGroupWidth / 2;
-              const barX = colCenterX - barWidth / 2;
+                    {/* Right Axis ticks (Growth %) */}
+                    {showGrowth && (
+                      <text
+                        x={680 - chartPadding.right + 10}
+                        y={y + 4}
+                        textAnchor="start"
+                        fill="rgba(16, 185, 129, 0.85)"
+                        fontSize="10px"
+                        fontFamily="var(--font-mono)"
+                        fontWeight="600"
+                      >
+                        {growthVal === 0 ? '0%' : `${growthVal > 0 ? '+' : ''}${growthVal.toFixed(0)}%`}
+                      </text>
+                    )}
+                  </g>
+                );
+              })}
 
-              if (p.growth === null || p.growth === undefined) {
-                // Baseline representation (START)
+              {/* Zero line for growth chart */}
+              {showGrowth && (
+                <line
+                  x1={chartPadding.left}
+                  y1={zeroY}
+                  x2={680 - chartPadding.right}
+                  y2={zeroY}
+                  stroke="rgba(16, 185, 129, 0.2)"
+                  strokeWidth="1.5"
+                />
+              )}
+
+              {/* Left Y-axis vertical line */}
+              {showTotalComp && (
+                <line
+                  x1={chartPadding.left}
+                  y1={chartPadding.top}
+                  x2={chartPadding.left}
+                  y2={chartPadding.top + chartHeight}
+                  stroke="rgba(99, 102, 241, 0.25)"
+                  strokeWidth="1.2"
+                />
+              )}
+
+              {/* Right Y-axis vertical line */}
+              {showGrowth && (
+                <line
+                  x1={680 - chartPadding.right}
+                  y1={chartPadding.top}
+                  x2={680 - chartPadding.right}
+                  y2={chartPadding.top + chartHeight}
+                  stroke="rgba(16, 185, 129, 0.25)"
+                  strokeWidth="1.2"
+                />
+              )}
+
+              {/* Render Bars and Labels */}
+              {activePeriods.map((p, i) => {
+                const colCenterX = chartPadding.left + barGroupWidth * i + barGroupWidth / 2;
+                const compBarX = colCenterX + compBarXOffset - compBarWidth / 2;
+                const growthBarX = colCenterX + growthBarXOffset - growthBarWidth / 2;
+
+                // Stack Y positions for Total Comp
+                const yBase = getYComp(p.base);
+                const yBonus = getYComp(p.base + p.bonus);
+                const yTotal = getYComp(p.total);
+                const yZero = getYComp(0);
+
                 return (
                   <g key={p.id}>
-                    <rect
-                      x={barX}
-                      y={zeroY - 12}
-                      width={barWidth}
-                      height={24}
-                      fill="rgba(99, 102, 241, 0.05)"
-                      stroke="rgba(99, 102, 241, 0.25)"
-                      strokeDasharray="2 2"
-                      rx={3}
-                    />
-                    <text
-                      x={colCenterX}
-                      y={zeroY + 3}
-                      textAnchor="middle"
-                      fill="var(--text-muted)"
-                      fontSize="8px"
-                      fontWeight="700"
-                      letterSpacing="0.05em"
-                    >
-                      START
-                    </text>
-                    
-                    {/* X-axis label */}
+                    {/* 1. Total Comp Stacked Bar */}
+                    {showTotalComp && p.total > 0 && (
+                      <g className="total-comp-bar-group">
+                        {/* Base salary segment */}
+                        {p.base > 0 && (
+                          <rect
+                            x={compBarX}
+                            y={yBase}
+                            width={compBarWidth}
+                            height={yZero - yBase}
+                            fill="rgba(56, 189, 248, 0.25)"
+                            stroke="var(--color-base)"
+                            strokeWidth="1.5"
+                            rx={2}
+                          />
+                        )}
+                        {/* Bonus segment */}
+                        {p.bonus > 0 && (
+                          <rect
+                            x={compBarX}
+                            y={yBonus}
+                            width={compBarWidth}
+                            height={yBase - yBonus}
+                            fill="rgba(16, 185, 129, 0.25)"
+                            stroke="var(--color-bonus)"
+                            strokeWidth="1.5"
+                            rx={2}
+                          />
+                        )}
+                        {/* Vested Stock segment */}
+                        {p.vest > 0 && (
+                          <rect
+                            x={compBarX}
+                            y={yTotal}
+                            width={compBarWidth}
+                            height={yBonus - yTotal}
+                            fill="rgba(168, 85, 247, 0.25)"
+                            stroke="var(--color-vest)"
+                            strokeWidth="1.5"
+                            rx={2}
+                          />
+                        )}
+                      </g>
+                    )}
+
+                    {/* 2. Growth Solid Bar */}
+                    {showGrowth && (
+                      p.growth === null ? (
+                        // Baseline START representation
+                        <g>
+                          <rect
+                            x={growthBarX}
+                            y={zeroY - 12}
+                            width={growthBarWidth}
+                            height={24}
+                            fill="rgba(99, 102, 241, 0.05)"
+                            stroke="rgba(99, 102, 241, 0.25)"
+                            strokeDasharray="2 2"
+                            rx={3}
+                          />
+                          <text
+                            x={colCenterX + growthBarXOffset}
+                            y={zeroY + 3}
+                            textAnchor="middle"
+                            fill="var(--text-muted)"
+                            fontSize="8px"
+                            fontWeight="700"
+                            style={{ letterSpacing: '0.05em' }}
+                          >
+                            START
+                          </text>
+                        </g>
+                      ) : (
+                        // Solid Growth Bar
+                        (() => {
+                          const isPos = p.growth > 0;
+                          const isNeg = p.growth < 0;
+                          let fill = 'rgba(99, 102, 241, 0.15)';
+                          let stroke = 'var(--color-primary)';
+                          
+                          if (isPos) {
+                            fill = 'rgba(16, 185, 129, 0.15)';
+                            stroke = '#10b981';
+                          } else if (isNeg) {
+                            fill = 'rgba(239, 68, 68, 0.15)';
+                            stroke = '#ef4444';
+                          }
+
+                          const valY = getGrowthY(p.growth);
+                          const barHeight = Math.max(2, Math.abs(zeroY - valY));
+                          const rectY = isPos ? valY : (isNeg ? zeroY : zeroY - 1);
+
+                          return (
+                            <rect
+                              x={growthBarX}
+                              y={rectY}
+                              width={growthBarWidth}
+                              height={barHeight}
+                              fill={fill}
+                              stroke={stroke}
+                              strokeWidth="1.5"
+                              rx={3}
+                              style={{ transition: 'all 0.3s ease' }}
+                            />
+                          );
+                        })()
+                      )
+                    )}
+
+                    {/* X-axis period labels */}
                     <text
                       x={colCenterX}
                       y={chartPadding.top + chartHeight + 18}
@@ -1660,7 +1913,7 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
                       {p.label}
                     </text>
 
-                    {/* Interactive overlay */}
+                    {/* Full Column Hover Interactive Overlay */}
                     <rect
                       x={chartPadding.left + barGroupWidth * i}
                       y={chartPadding.top}
@@ -1670,211 +1923,152 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
                       style={{ cursor: 'pointer' }}
                       onMouseEnter={() => {
                         setHoveredBar(p);
-                        setTooltipPos({ x: colCenterX, y: zeroY });
+                        setTooltipPos({ x: colCenterX, y: getTooltipY(p) });
                       }}
                       onMouseMove={() => {
                         setHoveredBar(p);
-                        setTooltipPos({ x: colCenterX, y: zeroY });
+                        setTooltipPos({ x: colCenterX, y: getTooltipY(p) });
                       }}
                       onMouseLeave={() => setHoveredBar(null)}
                     />
                   </g>
                 );
-              }
+              })}
+            </svg>
 
-              const isPos = p.growth > 0;
-              const isNeg = p.growth < 0;
-
-              let fill = 'rgba(99, 102, 241, 0.15)'; // default/zero color
-              let stroke = 'var(--color-primary)';
-              if (isPos) {
-                fill = 'rgba(16, 185, 129, 0.15)';
-                stroke = '#10b981';
-              } else if (isNeg) {
-                fill = 'rgba(239, 68, 68, 0.15)';
-                stroke = '#ef4444';
-              }
-
-              const valY = getGrowthY(p.growth);
-              const barHeight = Math.max(2, Math.abs(zeroY - valY));
-              const rectY = isPos ? valY : (isNeg ? zeroY : zeroY - 1);
+            {/* Floating Tooltip */}
+            {hoveredBar && (() => {
+              const isPos = hoveredBar.growth > 0;
+              const sign = isPos ? '+' : '';
+              const prevIdx = activePeriods.findIndex(p => p.id === hoveredBar.id) - 1;
+              const prevP = prevIdx >= 0 ? activePeriods[prevIdx] : null;
 
               return (
-                <g key={p.id}>
-                  {/* Growth Bar */}
-                  <rect
-                    x={barX}
-                    y={rectY}
-                    width={barWidth}
-                    height={barHeight}
-                    fill={fill}
-                    stroke={stroke}
-                    strokeWidth="1.5"
-                    rx={3}
-                    style={{ transition: 'all 0.3s ease' }}
-                  />
-
-                  {/* X-axis label */}
-                  <text
-                    x={colCenterX}
-                    y={chartPadding.top + chartHeight + 18}
-                    textAnchor="middle"
-                    fill="var(--text-secondary)"
-                    fontSize="10px"
-                    fontWeight="600"
-                  >
-                    {p.label}
-                  </text>
-
-                  {/* Interactive overlay */}
-                  <rect
-                    x={chartPadding.left + barGroupWidth * i}
-                    y={chartPadding.top}
-                    width={barGroupWidth}
-                    height={chartHeight}
-                    fill="transparent"
-                    style={{ cursor: 'pointer' }}
-                    onMouseEnter={() => {
-                      setHoveredBar(p);
-                      setTooltipPos({ x: colCenterX, y: isPos ? valY : (isNeg ? zeroY : zeroY) });
-                    }}
-                    onMouseMove={() => {
-                      setHoveredBar(p);
-                      setTooltipPos({ x: colCenterX, y: isPos ? valY : (isNeg ? zeroY : zeroY) });
-                    }}
-                    onMouseLeave={() => setHoveredBar(null)}
-                  />
-                </g>
-              );
-            })}
-          </svg>
-
-          {/* Floating Tooltip */}
-          {hoveredBar && (() => {
-            const isPos = hoveredBar.growth > 0;
-            const sign = isPos ? '+' : '';
-            const prevIdx = activePeriods.findIndex(p => p.id === hoveredBar.id) - 1;
-            const prevP = prevIdx >= 0 ? activePeriods[prevIdx] : null;
-
-            return (
-              <div
-                className="chart-tooltip animate-fade-in"
-                style={{
-                  left: `${(tooltipPos.x / 680) * 100}%`,
-                  top: `${(tooltipPos.y / 240) * 100}%`,
-                  transform: 'translate(-50%, -100%)',
-                  marginTop: '-10px',
-                  pointerEvents: 'none',
-                  zIndex: 100,
-                  boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.4)'
-                }}
-              >
-                <div className="tooltip-title" style={{ justifyContent: 'space-between', width: '100%', gap: '1rem' }}>
-                  <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>{hoveredBar.label}</span>
-                  {hoveredBar.growth !== null ? (
-                    hoveredBar.growth === 0 ? (
-                      <span
-                        className="tooltip-badge hike"
-                        style={{
-                          fontSize: '0.72rem',
-                          padding: '0.15rem 0.45rem',
-                          color: 'var(--color-primary)',
-                          background: 'rgba(99, 102, 241, 0.1)',
-                          borderColor: 'rgba(99, 102, 241, 0.2)',
-                          borderRadius: '4px',
-                          border: '1px solid'
-                        }}
-                      >
-                        0.0%
-                      </span>
-                    ) : (
-                      <span
-                        className={`tooltip-badge ${isPos ? 'bonus' : 'hike'}`}
-                        style={{
-                          fontSize: '0.72rem',
-                          padding: '0.15rem 0.45rem',
-                          color: isPos ? '#10b981' : '#ef4444',
-                          background: isPos ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                          borderColor: isPos ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                          borderRadius: '4px',
-                          border: '1px solid'
-                        }}
-                      >
-                        {sign}{hoveredBar.growth.toFixed(1)}%
-                      </span>
-                    )
-                  ) : (
-                    <span
-                      className="tooltip-badge hike"
-                      style={{
-                        fontSize: '0.72rem',
-                        padding: '0.15rem 0.45rem',
-                        color: 'var(--color-primary)',
-                        background: 'rgba(99, 102, 241, 0.1)',
-                        borderColor: 'rgba(99, 102, 241, 0.2)',
-                        borderRadius: '4px',
-                        border: '1px solid'
-                      }}
-                    >
-                      Start
-                    </span>
-                  )}
-                </div>
-
-                <div style={{ marginTop: '0.35rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                    Earnings: <strong style={{ color: 'var(--color-primary)' }}>{formatFullCurrency(hoveredBar.total)}</strong>
+                <div
+                  className="chart-tooltip animate-fade-in"
+                  style={{
+                    left: `${(tooltipPos.x / 680) * 100}%`,
+                    top: `${(tooltipPos.y / 240) * 100}%`,
+                    transform: 'translate(-50%, -100%)',
+                    marginTop: '-10px',
+                    pointerEvents: 'none',
+                    zIndex: 100,
+                    boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.4)'
+                  }}
+                >
+                  <div className="tooltip-title" style={{ display: 'flex', justifyContent: 'space-between', width: '100%', gap: '1rem', alignItems: 'center' }}>
+                    <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>{hoveredBar.label}</span>
+                    {showGrowth && (
+                      hoveredBar.growth !== null ? (
+                        hoveredBar.growth === 0 ? (
+                          <span
+                            className="tooltip-badge hike"
+                            style={{
+                              fontSize: '0.72rem',
+                              padding: '0.15rem 0.45rem',
+                              color: 'var(--color-primary)',
+                              background: 'rgba(99, 102, 241, 0.1)',
+                              borderColor: 'rgba(99, 102, 241, 0.2)',
+                              borderRadius: '4px',
+                              border: '1px solid'
+                            }}
+                          >
+                            0.0%
+                          </span>
+                        ) : (
+                          <span
+                            className={`tooltip-badge ${isPos ? 'bonus' : 'hike'}`}
+                            style={{
+                              fontSize: '0.72rem',
+                              padding: '0.15rem 0.45rem',
+                              color: isPos ? '#10b981' : '#ef4444',
+                              background: isPos ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                              borderColor: isPos ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                              borderRadius: '4px',
+                              border: '1px solid'
+                            }}
+                          >
+                            {sign}{hoveredBar.growth.toFixed(1)}%
+                          </span>
+                        )
+                      ) : (
+                        <span
+                          className="tooltip-badge hike"
+                          style={{
+                            fontSize: '0.72rem',
+                            padding: '0.15rem 0.45rem',
+                            color: 'var(--color-primary)',
+                            background: 'rgba(99, 102, 241, 0.1)',
+                            borderColor: 'rgba(99, 102, 241, 0.2)',
+                            borderRadius: '4px',
+                            border: '1px solid'
+                          }}
+                        >
+                          Start
+                        </span>
+                      )
+                    )}
                   </div>
-                  {prevP && (
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                      Prev Period: <strong>{formatFullCurrency(prevP.total)}</strong>
-                    </div>
-                  )}
-                </div>
 
-                {/* Breakdown context */}
-                <div style={{
-                  borderTop: '1px solid rgba(255, 255, 255, 0.06)',
-                  marginTop: '0.5rem',
-                  paddingTop: '0.4rem',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: '0.2rem',
-                  fontSize: '0.68rem',
-                  color: 'var(--text-muted)'
-                }}>
-                  {hoveredBar.base > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-base)' }}></span>
-                        <span>Base</span>
+                  {showTotalComp && (
+                    <div style={{ marginTop: '0.35rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                        Total Comp: <strong style={{ color: 'var(--color-primary)' }}>{formatFullCurrency(hoveredBar.total)}</strong>
                       </div>
-                      <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatFullCurrency(hoveredBar.base)}</span>
+                      {prevP && showGrowth && (
+                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                          Prev Period: <strong>{formatFullCurrency(prevP.total)}</strong>
+                        </div>
+                      )}
                     </div>
                   )}
-                  {hoveredBar.bonus > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-bonus)' }}></span>
-                        <span>Bonus</span>
-                      </div>
-                      <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatFullCurrency(hoveredBar.bonus)}</span>
-                    </div>
-                  )}
-                  {hoveredBar.vest > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                        <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-vest)' }}></span>
-                        <span>Vested</span>
-                      </div>
-                      <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatFullCurrency(hoveredBar.vest)}</span>
+
+                  {/* Breakdown context */}
+                  {showTotalComp && (hoveredBar.base > 0 || hoveredBar.bonus > 0 || hoveredBar.vest > 0) && (
+                    <div style={{
+                      borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+                      marginTop: '0.5rem',
+                      paddingTop: '0.4rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.2rem',
+                      fontSize: '0.68rem',
+                      color: 'var(--text-muted)'
+                    }}>
+                      {hoveredBar.base > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-base)' }}></span>
+                            <span>Base</span>
+                          </div>
+                          <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatFullCurrency(hoveredBar.base)}</span>
+                        </div>
+                      )}
+                      {hoveredBar.bonus > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-bonus)' }}></span>
+                            <span>Bonus</span>
+                          </div>
+                          <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatFullCurrency(hoveredBar.bonus)}</span>
+                        </div>
+                      )}
+                      {hoveredBar.vest > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-vest)' }}></span>
+                            <span>Vested</span>
+                          </div>
+                          <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatFullCurrency(hoveredBar.vest)}</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              </div>
-            );
-          })()}
-        </div>
+              );
+            })()}
+          </div>
+        )
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {activePeriods.map(p => {
@@ -1882,49 +2076,50 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
             const bonusPct = (p.bonus / maxPeriodTotal) * 100;
             const vestPct = (p.vest / maxPeriodTotal) * 100;
 
-            // Growth element styling
-            let growthEl;
-            if (p.growth !== null) {
-              if (p.growth === 0) {
-                growthEl = (
-                  <span
-                    className="tooltip-badge hike"
-                    style={{
-                      fontSize: '0.75rem',
-                      padding: '0.15rem 0.45rem',
-                      color: 'var(--color-primary)',
-                      background: 'rgba(99, 102, 241, 0.1)',
-                      borderColor: 'rgba(99, 102, 241, 0.2)'
-                    }}
-                  >
-                    0.0%
-                  </span>
-                );
+            let growthEl = null;
+            if (showGrowth) {
+              if (p.growth !== null) {
+                if (p.growth === 0) {
+                  growthEl = (
+                    <span
+                      className="tooltip-badge hike"
+                      style={{
+                        fontSize: '0.75rem',
+                        padding: '0.15rem 0.45rem',
+                        color: 'var(--color-primary)',
+                        background: 'rgba(99, 102, 241, 0.1)',
+                        borderColor: 'rgba(99, 102, 241, 0.2)'
+                      }}
+                    >
+                      0.0%
+                    </span>
+                  );
+                } else {
+                  const growthVal = p.growth;
+                  const isGrowthPos = growthVal > 0;
+                  const sign = isGrowthPos ? '+' : '';
+                  growthEl = (
+                    <span
+                      className={`tooltip-badge ${isGrowthPos ? 'bonus' : 'hike'}`}
+                      style={{
+                        fontSize: '0.75rem',
+                        padding: '0.15rem 0.45rem',
+                        color: isGrowthPos ? '#10b981' : '#ef4444',
+                        background: isGrowthPos ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                        borderColor: isGrowthPos ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'
+                      }}
+                    >
+                      {sign}{growthVal.toFixed(1)}%
+                    </span>
+                  );
+                }
               } else {
-                const growthVal = p.growth;
-                const isGrowthPos = growthVal > 0;
-                const sign = isGrowthPos ? '+' : '';
                 growthEl = (
-                  <span
-                    className={`tooltip-badge ${isGrowthPos ? 'bonus' : 'hike'}`}
-                    style={{
-                      fontSize: '0.75rem',
-                      padding: '0.15rem 0.45rem',
-                      color: isGrowthPos ? '#10b981' : '#ef4444',
-                      background: isGrowthPos ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                      borderColor: isGrowthPos ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'
-                    }}
-                  >
-                    {sign}{growthVal.toFixed(1)}%
+                  <span className="tooltip-badge hike" style={{ fontSize: '0.75rem', padding: '0.15rem 0.45rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' }}>
+                    —
                   </span>
                 );
               }
-            } else {
-              growthEl = (
-                <span className="tooltip-badge hike" style={{ fontSize: '0.75rem', padding: '0.15rem 0.45rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' }}>
-                  —
-                </span>
-              );
             }
 
             return (
@@ -1934,55 +2129,61 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
                     <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{p.label}</span>
                     {growthEl}
                   </div>
-                  <div style={{ fontWeight: 600 }}>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginRight: '0.35rem' }}>Total:</span>
-                    <span style={{ color: 'var(--color-primary)' }}>{formatFullCurrency(p.total)}</span>
-                  </div>
+                  {showTotalComp && (
+                    <div style={{ fontWeight: 600 }}>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginRight: '0.35rem' }}>Total:</span>
+                      <span style={{ color: 'var(--color-primary)' }}>{formatFullCurrency(p.total)}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Progress Stacks */}
-                <div style={{ height: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px', display: 'flex', overflow: 'hidden', width: '100%' }}>
-                  {p.base > 0 && (
-                    <div
-                      style={{ width: `${basePct}%`, background: 'var(--color-base)' }}
-                      title={`Base: ${formatFullCurrency(p.base)} (${p.total > 0 ? ((p.base / p.total) * 100).toFixed(0) : 0}%)`}
-                    />
-                  )}
-                  {p.bonus > 0 && (
-                    <div
-                      style={{ width: `${bonusPct}%`, background: 'var(--color-bonus)' }}
-                      title={`Bonus: ${formatFullCurrency(p.bonus)} (${p.total > 0 ? ((p.bonus / p.total) * 100).toFixed(0) : 0}%)`}
-                    />
-                  )}
-                  {p.vest > 0 && (
-                    <div
-                      style={{ width: `${vestPct}%`, background: 'var(--color-vest)' }}
-                      title={`Vested: ${formatFullCurrency(p.vest)} (${p.total > 0 ? ((p.vest / p.total) * 100).toFixed(0) : 0}%)`}
-                    />
-                  )}
-                </div>
+                {showTotalComp && (
+                  <>
+                    <div style={{ height: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px', display: 'flex', overflow: 'hidden', width: '100%' }}>
+                      {p.base > 0 && (
+                        <div
+                          style={{ width: `${basePct}%`, background: 'var(--color-base)' }}
+                          title={`Base: ${formatFullCurrency(p.base)} (${p.total > 0 ? ((p.base / p.total) * 100).toFixed(0) : 0}%)`}
+                        />
+                      )}
+                      {p.bonus > 0 && (
+                        <div
+                          style={{ width: `${bonusPct}%`, background: 'var(--color-bonus)' }}
+                          title={`Bonus: ${formatFullCurrency(p.bonus)} (${p.total > 0 ? ((p.bonus / p.total) * 100).toFixed(0) : 0}%)`}
+                        />
+                      )}
+                      {p.vest > 0 && (
+                        <div
+                          style={{ width: `${vestPct}%`, background: 'var(--color-vest)' }}
+                          title={`Vested: ${formatFullCurrency(p.vest)} (${p.total > 0 ? ((p.vest / p.total) * 100).toFixed(0) : 0}%)`}
+                        />
+                      )}
+                    </div>
 
-                {/* Detailed breakout text under the bar */}
-                <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.1rem', flexWrap: 'wrap' }}>
-                  {p.base > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-base)' }}></span>
-                      <span>Base: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.base)}</strong> ({p.total > 0 ? ((p.base / p.total) * 100).toFixed(0) : 0}%)</span>
+                    {/* Detailed breakout text under the bar */}
+                    <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.1rem', flexWrap: 'wrap' }}>
+                      {p.base > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-base)' }}></span>
+                          <span>Base: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.base)}</strong> ({p.total > 0 ? ((p.base / p.total) * 100).toFixed(0) : 0}%)</span>
+                        </div>
+                      )}
+                      {p.bonus > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-bonus)' }}></span>
+                          <span>Bonus: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.bonus)}</strong> ({p.total > 0 ? ((p.bonus / p.total) * 100).toFixed(0) : 0}%)</span>
+                        </div>
+                      )}
+                      {p.vest > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-vest)' }}></span>
+                          <span>Vested: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.vest)}</strong> ({p.total > 0 ? ((p.vest / p.total) * 100).toFixed(0) : 0}%)</span>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {p.bonus > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-bonus)' }}></span>
-                      <span>Bonus: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.bonus)}</strong> ({p.total > 0 ? ((p.bonus / p.total) * 100).toFixed(0) : 0}%)</span>
-                    </div>
-                  )}
-                  {p.vest > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-vest)' }}></span>
-                      <span>Vested: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.vest)}</strong> ({p.total > 0 ? ((p.vest / p.total) * 100).toFixed(0) : 0}%)</span>
-                    </div>
-                  )}
-                </div>
+                  </>
+                )}
               </div>
             );
           })}
