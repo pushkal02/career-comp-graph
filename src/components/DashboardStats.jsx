@@ -136,7 +136,7 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
     {
       label: "Realized Career Earnings",
       value: formatCurrency(totalRealizedComp),
-      subtext: "Cumulative base + bonuses + vested stock",
+      subtext: "Cumulative base + bonuses + vested stock (up to start of current month)",
       icon: <Percent size={20} style={{ color: 'var(--color-primary)' }} />,
       className: "total"
     }
