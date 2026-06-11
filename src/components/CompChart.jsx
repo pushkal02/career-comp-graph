@@ -1431,6 +1431,8 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
     return {
       id: p.id,
       label: p.label,
+      start: p.start,
+      end: p.end,
       base: baseEarned,
       bonus: bonusEarned,
       vest: vestEarned,
