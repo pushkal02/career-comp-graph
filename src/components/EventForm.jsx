@@ -229,7 +229,11 @@ export default function EventForm({
   const allEventsChronological = [
     ...salaryEvents.map(e => ({ ...e, eventCategory: 'salary' })),
     ...compEvents.map(e => ({ ...e, eventCategory: 'comp' }))
-  ].sort((a, b) => b.date.localeCompare(a.date)); // Newest first for list view
+  ].sort((a, b) => {
+    const normA = a.date.length === 7 ? `${a.date}-01` : a.date;
+    const normB = b.date.length === 7 ? `${b.date}-01` : b.date;
+    return normB.localeCompare(normA); // Newest first for list view
+  });
 
   const getCurrencySymbol = (curr) => {
     switch (curr) {

@@ -55,8 +55,14 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
     return baseMonths + dayFraction;
   };
 
+  const normalizeDate = (d) => (d && d.length === 7) ? `${d}-01` : d;
+
   // Chronologically sort salary events
-  const sortedSalaryEvents = [...salaryEvents].sort((a, b) => a.date.localeCompare(b.date));
+  const sortedSalaryEvents = [...salaryEvents].sort((a, b) => {
+    const normA = normalizeDate(a.date);
+    const normB = normalizeDate(b.date);
+    return normA.localeCompare(normB);
+  });
 
   // Determine dynamic end date
   let maxEventMonth = 35; // Default to Dec 2026 (36 months: 0 to 35)
@@ -223,11 +229,13 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
   // Helper to find base salary at any given date string YYYY-MM
   const getSalaryAtDate = (dateStr) => {
     if (sortedSalaryEvents.length === 0) return 0;
+    const normDateStr = normalizeDate(dateStr);
     // Find last salary event on or before this date
     let activeSalary = sortedSalaryEvents[0].salary;
     let activeCurrency = sortedSalaryEvents[0].currency;
     for (let i = 0; i < sortedSalaryEvents.length; i++) {
-      if (sortedSalaryEvents[i].date <= dateStr) {
+      const normEvtDate = normalizeDate(sortedSalaryEvents[i].date);
+      if (normEvtDate <= normDateStr) {
         activeSalary = sortedSalaryEvents[i].salary;
         activeCurrency = sortedSalaryEvents[i].currency;
       }
@@ -722,10 +730,11 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
               const filteredCompEvents = compEvents.filter(evt => filters[evt.type]);
               const compGroupsByDate = {};
               filteredCompEvents.forEach((evt) => {
-                if (!compGroupsByDate[evt.date]) {
-                  compGroupsByDate[evt.date] = [];
+                const normalizedDate = normalizeDate(evt.date);
+                if (!compGroupsByDate[normalizedDate]) {
+                  compGroupsByDate[normalizedDate] = [];
                 }
-                compGroupsByDate[evt.date].push(evt);
+                compGroupsByDate[normalizedDate].push(evt);
               });
  
               return Object.entries(compGroupsByDate).map(([date, group]) => {
@@ -973,7 +982,13 @@ function CompanyEarningsList({ salaryEvents, compEvents, startDate, currency, fo
   const [sortBy, setSortBy] = useState('amount'); // 'amount' or 'time'
   const [sortOrder, setSortOrder] = useState('desc'); // 'desc' or 'asc'
 
-  const sortedSalaryEvents = [...salaryEvents].sort((a, b) => a.date.localeCompare(b.date));
+  const normalizeDate = (d) => (d && d.length === 7) ? `${d}-01` : d;
+
+  const sortedSalaryEvents = [...salaryEvents].sort((a, b) => {
+    const normA = normalizeDate(a.date);
+    const normB = normalizeDate(b.date);
+    return normA.localeCompare(normB);
+  });
   const baselineDate = startDate || "2024-01";
   
   const today = new Date();
@@ -991,18 +1006,20 @@ function CompanyEarningsList({ salaryEvents, compEvents, startDate, currency, fo
     const data = {};
 
     // 1. Calculate Base salary contribution
-    if (sortedSalaryEvents.length > 0 && baselineDate < cutoffDate) {
+    const normBaseline = normalizeDate(baselineDate);
+    const normCutoff = normalizeDate(cutoffDate);
+    if (sortedSalaryEvents.length > 0 && normBaseline < normCutoff) {
       for (let i = 0; i < sortedSalaryEvents.length; i++) {
         const currentEvent = sortedSalaryEvents[i];
         const nextEvent = sortedSalaryEvents[i + 1];
         
-        let segmentStart = currentEvent.date;
-        if (segmentStart < baselineDate) segmentStart = baselineDate;
-        if (segmentStart > cutoffDate) segmentStart = cutoffDate;
+        let segmentStart = normalizeDate(currentEvent.date);
+        if (segmentStart < normBaseline) segmentStart = normBaseline;
+        if (segmentStart > normCutoff) segmentStart = normCutoff;
         
-        let segmentEnd = nextEvent ? nextEvent.date : cutoffDate;
-        if (segmentEnd < baselineDate) segmentEnd = baselineDate;
-        if (segmentEnd > cutoffDate) segmentEnd = cutoffDate;
+        let segmentEnd = nextEvent ? normalizeDate(nextEvent.date) : normCutoff;
+        if (segmentEnd < normBaseline) segmentEnd = normBaseline;
+        if (segmentEnd > normCutoff) segmentEnd = normCutoff;
         
         const durationYears = getYearDiff(segmentStart, segmentEnd);
         if (durationYears > 0) {
@@ -1015,15 +1032,16 @@ function CompanyEarningsList({ salaryEvents, compEvents, startDate, currency, fo
           data[companyName].base += earned;
           data[companyName].total += earned;
           
-          if (currentEvent.date < data[companyName].earliestDate) data[companyName].earliestDate = currentEvent.date;
-          if (currentEvent.date > data[companyName].latestDate) data[companyName].latestDate = currentEvent.date;
+          const normEvtDate = normalizeDate(currentEvent.date);
+          if (normEvtDate < normalizeDate(data[companyName].earliestDate)) data[companyName].earliestDate = currentEvent.date;
+          if (normEvtDate > normalizeDate(data[companyName].latestDate)) data[companyName].latestDate = currentEvent.date;
         }
       }
     }
 
     // 2. Add comp events
     compEvents.forEach(evt => {
-      if (evt.date >= cutoffDate) return;
+      if (normalizeDate(evt.date) >= normCutoff) return;
 
       const companyName = evt.company || 'Self-Employed';
       if (!data[companyName]) {
@@ -1039,8 +1057,9 @@ function CompanyEarningsList({ salaryEvents, compEvents, startDate, currency, fo
         data[companyName].total += val;
       }
       
-      if (evt.date < data[companyName].earliestDate) data[companyName].earliestDate = evt.date;
-      if (evt.date > data[companyName].latestDate) data[companyName].latestDate = evt.date;
+      const normEvtDate = normalizeDate(evt.date);
+      if (normEvtDate < normalizeDate(data[companyName].earliestDate)) data[companyName].earliestDate = evt.date;
+      if (normEvtDate > normalizeDate(data[companyName].latestDate)) data[companyName].latestDate = evt.date;
     });
 
     return Object.values(data);
@@ -1054,9 +1073,11 @@ function CompanyEarningsList({ salaryEvents, compEvents, startDate, currency, fo
       return sortOrder === 'desc' ? b.total - a.total : a.total - b.total;
     } else {
       // Sort by time (latest active date)
+      const normA = normalizeDate(a.latestDate);
+      const normB = normalizeDate(b.latestDate);
       return sortOrder === 'desc' 
-        ? b.latestDate.localeCompare(a.latestDate) 
-        : a.latestDate.localeCompare(b.latestDate);
+        ? normB.localeCompare(normA) 
+        : normA.localeCompare(normB);
     }
   });
 
@@ -1288,7 +1309,13 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
     return getYearDiff(s, e);
   };
 
-  const sortedSalaryEvents = [...salaryEvents].sort((a, b) => a.date.localeCompare(b.date));
+  const normalizeDate = (d) => (d && d.length === 7) ? `${d}-01` : d;
+
+  const sortedSalaryEvents = [...salaryEvents].sort((a, b) => {
+    const normA = normalizeDate(a.date);
+    const normB = normalizeDate(b.date);
+    return normA.localeCompare(normB);
+  });
 
   // Determine the range of years to generate
   let maxYear = currentYear;
@@ -1362,11 +1389,16 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
         const currentEvent = sortedSalaryEvents[i];
         const nextEvent = sortedSalaryEvents[i + 1];
 
-        let segmentStart = currentEvent.date;
-        if (segmentStart < baselineDate) segmentStart = baselineDate;
+        const normStart = normalizeDate(currentEvent.date);
+        const normNext = nextEvent ? normalizeDate(nextEvent.date) : null;
+        const normBaseline = normalizeDate(baselineDate);
+        const normCutoff = normalizeDate(cutoffDate);
+
+        let segmentStart = normStart;
+        if (segmentStart < normBaseline) segmentStart = normBaseline;
         
-        let segmentEnd = nextEvent ? nextEvent.date : cutoffDate;
-        if (segmentEnd < baselineDate) segmentEnd = baselineDate;
+        let segmentEnd = normNext ? normNext : normCutoff;
+        if (segmentEnd < normBaseline) segmentEnd = normBaseline;
 
         // Find overlap between [segmentStart, segmentEnd] and period [p.start, p.end]
         let actualPeriodEnd = p.end;
@@ -1380,12 +1412,19 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
     }
 
     // Sum comp events falling in this period before cutoff
+    const normCutoff = normalizeDate(cutoffDate);
     const bonusEarned = compEvents
-      .filter(e => e.type === 'bonus' && e.date >= p.start && e.date <= p.end && e.date < cutoffDate)
+      .filter(e => {
+        const normDate = normalizeDate(e.date);
+        return e.type === 'bonus' && normDate >= p.start && normDate <= p.end && normDate < normCutoff;
+      })
       .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, currency), 0);
 
     const vestEarned = compEvents
-      .filter(e => e.type === 'vest' && e.date >= p.start && e.date <= p.end && e.date < cutoffDate)
+      .filter(e => {
+        const normDate = normalizeDate(e.date);
+        return e.type === 'vest' && normDate >= p.start && normDate <= p.end && normDate < normCutoff;
+      })
       .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, currency), 0);
 
     const totalEarned = baseEarned + bonusEarned + vestEarned;

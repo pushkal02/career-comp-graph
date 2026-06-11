@@ -118,9 +118,14 @@ export default function App() {
     };
     
     setSalaryEvents((prev) => {
-      // Check if an event already exists on this month
-      const filtered = prev.filter(e => e.date !== event.date);
-      const updated = [...filtered, newEvent].sort((a, b) => a.date.localeCompare(b.date));
+      // Check if an event already exists on this month (YYYY-MM)
+      const targetMonth = event.date.substring(0, 7);
+      const filtered = prev.filter(e => e.date.substring(0, 7) !== targetMonth);
+      const updated = [...filtered, newEvent].sort((a, b) => {
+        const normA = a.date.length === 7 ? `${a.date}-01` : a.date;
+        const normB = b.date.length === 7 ? `${b.date}-01` : b.date;
+        return normA.localeCompare(normB);
+      });
       return updated;
     });
   };
@@ -133,7 +138,11 @@ export default function App() {
     };
     
     setCompEvents((prev) => {
-      const updated = [...prev, newEvent].sort((a, b) => a.date.localeCompare(b.date));
+      const updated = [...prev, newEvent].sort((a, b) => {
+        const normA = a.date.length === 7 ? `${a.date}-01` : a.date;
+        const normB = b.date.length === 7 ? `${b.date}-01` : b.date;
+        return normA.localeCompare(normB);
+      });
       return updated;
     });
   };
@@ -146,9 +155,14 @@ export default function App() {
   // Edit an existing salary change event
   const handleEditSalaryEvent = (updatedEvent) => {
     setSalaryEvents((prev) => {
-      // Filter out this event's old version and any other salary event on the updated date
-      const filtered = prev.filter(e => e.id !== updatedEvent.id && e.date !== updatedEvent.date);
-      const updated = [...filtered, updatedEvent].sort((a, b) => a.date.localeCompare(b.date));
+      // Filter out this event's old version and any other salary event on the updated date's month
+      const targetMonth = updatedEvent.date.substring(0, 7);
+      const filtered = prev.filter(e => e.id !== updatedEvent.id && e.date.substring(0, 7) !== targetMonth);
+      const updated = [...filtered, updatedEvent].sort((a, b) => {
+        const normA = a.date.length === 7 ? `${a.date}-01` : a.date;
+        const normB = b.date.length === 7 ? `${b.date}-01` : b.date;
+        return normA.localeCompare(normB);
+      });
       return updated;
     });
   };
@@ -157,7 +171,11 @@ export default function App() {
   const handleEditCompEvent = (updatedEvent) => {
     setCompEvents((prev) => {
       const filtered = prev.filter(e => e.id !== updatedEvent.id);
-      const updated = [...filtered, updatedEvent].sort((a, b) => a.date.localeCompare(b.date));
+      const updated = [...filtered, updatedEvent].sort((a, b) => {
+        const normA = a.date.length === 7 ? `${a.date}-01` : a.date;
+        const normB = b.date.length === 7 ? `${b.date}-01` : b.date;
+        return normA.localeCompare(normB);
+      });
       return updated;
     });
   };
