@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Download, FileSpreadsheet, Upload } from 'lucide-react';
 import { convertCurrency } from '../utils/currency';
+import CompChart3D from './CompChart3D';
 
 export default function CompChart({ salaryEvents, compEvents, startDate, currency, userName, onImportJSON, is3D = false }) {
   const containerRef = useRef(null);
@@ -527,11 +528,25 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
         })}
       </div>
 
-      <div className="chart-3d-perspective">
-      <div
-        ref={containerRef}
-        className={`chart-container chart-container-3d-transform${is3D ? ' is-3d' : ''}`}
-      >
+      {/* 3D Mode — Three.js canvas replaces the SVG chart */}
+      {is3D ? (
+        <CompChart3D
+          sortedSalaryEvents={sortedSalaryEvents}
+          compEvents={compEvents}
+          filters={filters}
+          startYear={startYear}
+          startMonth={startMonth}
+          endYear={endYear}
+          totalMonths={totalMonths}
+          maxY={maxY}
+          maxCompAmount={maxCompAmount}
+          currency={currency}
+          formatFullCurrency={formatFullCurrency}
+          formatShortCurrency={formatShortCurrency}
+          formatDateLabel={formatDateLabel}
+        />
+      ) : (
+      <div ref={containerRef} className="chart-container">
         {salaryEvents.length === 0 ? (
           <div className="empty-state" style={{ height: '100%' }}>
             <span className="empty-state-icon" style={{ fontSize: '3rem' }}>📈</span>
@@ -599,79 +614,13 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
               </g>
             ))}
 
-            {/* ── 3D DEPTH LAYER ── rendered behind everything when is3D ── */}
-            {is3D && filters.salaryLine && salaryPathD && (() => {
-              // Build an offset ribbon wall: shift the salary path down+right by depthOffset px
-              const depthOffset = 10;
-              // Replace all coordinate pairs M x y, L x y with M x+d y+d
-              const shiftPath = (d) => d.replace(/([ML])\s+([\d.]+)\s+([\d.]+)/g, (_, cmd, x, y) =>
-                `${cmd} ${parseFloat(x) + depthOffset} ${parseFloat(y) + depthOffset}`
-              );
-              const bottomY = dimensions.height - padding.bottom;
-              // Top face is original, bottom face is offset
-              const shiftedPath = shiftPath(salaryPathD);
-
-
-              return (
-                <g key="3d-depth-layer" style={{ pointerEvents: 'none' }}>
-                  {/* Ribbon wall face */}
-                  <path
-                    d={shiftedPath}
-                    fill="none"
-                    stroke="var(--color-base)"
-                    strokeWidth="1.5"
-                    strokeOpacity="0.18"
-                  />
-                  {/* Vertical depth edges at each salary step transition */}
-                  {salarySegments.map((seg, idx) => (
-                    <line
-                      key={`3d-edge-${idx}`}
-                      x1={idx === 0 ? seg.startX : seg.startX}
-                      y1={seg.y}
-                      x2={(idx === 0 ? seg.startX : seg.startX) + depthOffset}
-                      y2={seg.y + depthOffset}
-                      stroke="var(--color-base)"
-                      strokeWidth="1"
-                      strokeOpacity="0.25"
-                    />
-                  ))}
-                  {/* Floor glow bar at x-axis baseline */}
-                  <rect
-                    x={padding.left + depthOffset}
-                    y={bottomY + depthOffset - 4}
-                    width={dimensions.width - padding.left - padding.right}
-                    height={5}
-                    rx="2"
-                    fill="var(--color-primary)"
-                    opacity="0.12"
-                  />
-                </g>
-              );
-            })()}
-
-            {/* 3D Mode Badge */}
-            {is3D && (
-              <text
-                x={dimensions.width - padding.right - 4}
-                y={padding.top - 10}
-                className="chart-axis-text"
-                textAnchor="end"
-                fontSize="9.5"
-                fontWeight="800"
-                fill="var(--color-primary)"
-                opacity="0.75"
-                fontFamily="var(--font-mono)"
-                style={{ letterSpacing: '0.08em' }}
-              >
-                ◈ 3D MODE
-              </text>
-            )}
 
             {/* Salary Area Shadow */}
             {filters.salaryLine && salaryAreaD && <path className="chart-line-shadow" d={salaryAreaD} />}
 
             {/* Salary Step Line */}
             {filters.salaryLine && salaryPathD && <path className="chart-line-salary" d={salaryPathD} />}
+
 
             {/* Salary Step Line Labels */}
             {filters.salaryLine && salarySegments.map((seg, idx) => {
@@ -788,50 +737,10 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
               );
             })}
 
-            {/* 3D Comp Event Pillar Lines (depth drops to floor) */}
-            {is3D && (() => {
-              const filteredCompEvents = compEvents.filter(evt => filters[evt.type]);
-              const datesSeen = new Set();
-              return filteredCompEvents
-                .filter(evt => {
-                  const nd = (evt.date && evt.date.length === 7) ? `${evt.date}-01` : evt.date;
-                  if (datesSeen.has(nd)) return false;
-                  datesSeen.add(nd);
-                  return true;
-                })
-                .map(evt => {
-                  const nd = (evt.date && evt.date.length === 7) ? `${evt.date}-01` : evt.date;
-                  const x = getX(nd);
-                  const activeSalary = getSalaryAtDate(nd);
-                  const y = getY(activeSalary);
-                  const bottomY = dimensions.height - padding.bottom;
-                  let strokeColor = 'var(--color-bonus)';
-                  if (evt.type === 'grant') strokeColor = 'var(--color-grant)';
-                  if (evt.type === 'vest') strokeColor = 'var(--color-vest)';
-                  return (
-                    <g key={`3d-pillar-${nd}`} style={{ pointerEvents: 'none' }}>
-                      <line
-                        x1={x} y1={y}
-                        x2={x} y2={bottomY}
-                        stroke={strokeColor}
-                        strokeWidth="1.5"
-                        strokeOpacity="0.25"
-                        strokeDasharray="4,3"
-                      />
-                      {/* Small ellipse shadow on floor */}
-                      <ellipse
-                        cx={x} cy={bottomY}
-                        rx="6" ry="2"
-                        fill={strokeColor}
-                        opacity="0.2"
-                      />
-                    </g>
-                  );
-                });
-            })()}
 
             {/* Financial Overlay Circles (Bonus, Grant, Vest) */}
             {(() => {
+
               // Group financial events by date to draw overlapping ones as concentric doughnuts
               const filteredCompEvents = compEvents.filter(evt => filters[evt.type]);
               const compGroupsByDate = {};
@@ -1057,7 +966,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
           </div>
         )}
       </div>
-      </div> {/* end .chart-3d-perspective */}
+      )} {/* end is3D conditional */}
 
       {/* Company Contribution Amount List Section */}
       {salaryEvents.length > 0 && (
