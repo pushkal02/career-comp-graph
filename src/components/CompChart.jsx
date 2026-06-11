@@ -1294,8 +1294,6 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
 
   const today = new Date();
   const currentYear = today.getFullYear();
-  const currentMonth = today.getMonth() + 1;
-  const cutoffDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
 
   const getYearDiff = (date1, date2) => {
     const d1 = new Date(date1.length === 7 ? `${date1}-01` : date1);
@@ -1327,12 +1325,8 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
     return normA.localeCompare(normB);
   });
 
-  // Determine the range of years to generate
-  let maxYear = currentYear;
-  [...salaryEvents, ...compEvents].forEach(evt => {
-    const y = Number(evt.date.split('-')[0]);
-    if (y > maxYear) maxYear = y;
-  });
+  // Determine the range of years to generate (up to current year)
+  const maxYear = currentYear;
 
   const years = [];
   for (let y = startYearNum; y <= maxYear; y++) {
@@ -1390,7 +1384,7 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
     }
   });
 
-  // Calculate earnings for each period
+  // Calculate earnings for each period (current/future periods show projected earnings)
   const periodsData = periods.map(p => {
     let baseEarned = 0;
     // Calculate salary contributions
@@ -1402,38 +1396,33 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
         const normStart = normalizeDate(currentEvent.date);
         const normNext = nextEvent ? normalizeDate(nextEvent.date) : null;
         const normBaseline = normalizeDate(baselineDate);
-        const normCutoff = normalizeDate(cutoffDate);
 
         let segmentStart = normStart;
         if (segmentStart < normBaseline) segmentStart = normBaseline;
         
-        let segmentEnd = normNext ? normNext : normCutoff;
+        let segmentEnd = normNext ? normNext : p.end;
         if (segmentEnd < normBaseline) segmentEnd = normBaseline;
 
         // Find overlap between [segmentStart, segmentEnd] and period [p.start, p.end]
-        let actualPeriodEnd = p.end;
-        if (actualPeriodEnd > normCutoff) actualPeriodEnd = normCutoff;
-
-        const overlap = getOverlapYears(segmentStart, segmentEnd, p.start, actualPeriodEnd);
+        const overlap = getOverlapYears(segmentStart, segmentEnd, p.start, p.end);
         if (overlap > 0) {
           baseEarned += convertCurrency(currentEvent.salary, currentEvent.currency, currency) * overlap;
         }
       }
     }
 
-    // Sum comp events falling in this period before cutoff
-    const normCutoff = normalizeDate(cutoffDate);
+    // Sum comp events falling in this period
     const bonusEarned = compEvents
       .filter(e => {
         const normDate = normalizeDate(e.date);
-        return e.type === 'bonus' && normDate >= p.start && normDate < p.end && normDate < normCutoff;
+        return e.type === 'bonus' && normDate >= p.start && normDate < p.end;
       })
       .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, currency), 0);
 
     const vestEarned = compEvents
       .filter(e => {
         const normDate = normalizeDate(e.date);
-        return e.type === 'vest' && normDate >= p.start && normDate < p.end && normDate < normCutoff;
+        return e.type === 'vest' && normDate >= p.start && normDate < p.end;
       })
       .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, currency), 0);
 
@@ -1476,7 +1465,7 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Periodic Earnings Analysis</h3>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Realized earnings breakdown and growth performance over time</p>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Realized earnings breakdown and growth performance (current period shows projected earnings)</p>
         </div>
         
         {/* Period Selector Tabs */}
