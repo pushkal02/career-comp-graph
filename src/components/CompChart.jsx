@@ -1453,9 +1453,12 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
     }
   }
 
-  // Filter out future periods where total is 0 to avoid clutter
-  const activePeriods = periodsData.filter((p, idx) => {
-    return p.total > 0 || idx === 0;
+  const todayDate = new Date();
+  const todayStr = `${todayDate.getFullYear()}-${String(todayDate.getMonth() + 1).padStart(2, '0')}-${String(todayDate.getDate()).padStart(2, '0')}`;
+
+  // Only include periods that are ongoing or completed (i.e. start date is on or before today)
+  const activePeriods = periodsData.filter(p => {
+    return p.start <= todayStr;
   });
 
   const maxPeriodTotal = Math.max(...activePeriods.map(p => p.total), 1);
