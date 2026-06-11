@@ -25,11 +25,20 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
     }).format(val);
   };
 
-  // Calculate chronological difference in years (supporting day precision)
+  // Calculate chronological difference in years (supporting day precision via UTC month-based difference)
   const getYearDiff = (date1, date2) => {
     const d1 = new Date(date1.length === 7 ? `${date1}-01` : date1);
     const d2 = new Date(date2.length === 7 ? `${date2}-01` : date2);
-    return (d2.getTime() - d1.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+    const y1 = d1.getUTCFullYear();
+    const m1 = d1.getUTCMonth();
+    const day1 = d1.getUTCDate();
+    const y2 = d2.getUTCFullYear();
+    const m2 = d2.getUTCMonth();
+    const day2 = d2.getUTCDate();
+    const monthDiff = (y2 - y1) * 12 + (m2 - m1);
+    const dayDiff = day2 - day1;
+    const totalMonths = monthDiff + dayDiff / 30.4368;
+    return totalMonths / 12;
   };
 
 

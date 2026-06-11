@@ -64,19 +64,11 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
     return normA.localeCompare(normB);
   });
 
-  // Determine dynamic end date
-  let maxEventMonth = 35; // Default to Dec 2026 (36 months: 0 to 35)
-  const allEvents = [...salaryEvents, ...compEvents];
-  allEvents.forEach(e => {
-    const months = getMonthsSinceStart(e.date);
-    if (months > maxEventMonth) {
-      maxEventMonth = months;
-    }
-  });
-  
-  // Align end to a nice quarterly/yearly boundary (at least end of year)
-  const totalMonths = Math.max(maxEventMonth + 2, 35); // pad by 2 months, at least 3 years
-  const endYear = startYear + Math.floor(totalMonths / 12);
+  // Graph ends exactly on the last day of the current year (December 31st of currentYear)
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const endYear = Math.max(currentYear, startYear);
+  const totalMonths = (endYear - startYear) * 12 + (12 - startMonth);
 
   // Maximum and Minimum salary for Y scale
   const salaries = salaryEvents.map(e => convertCurrency(e.salary, e.currency, currency));
@@ -999,7 +991,16 @@ function CompanyEarningsList({ salaryEvents, compEvents, startDate, currency, fo
   const getYearDiff = (date1, date2) => {
     const d1 = new Date(date1.length === 7 ? `${date1}-01` : date1);
     const d2 = new Date(date2.length === 7 ? `${date2}-01` : date2);
-    return (d2.getTime() - d1.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+    const y1 = d1.getUTCFullYear();
+    const m1 = d1.getUTCMonth();
+    const day1 = d1.getUTCDate();
+    const y2 = d2.getUTCFullYear();
+    const m2 = d2.getUTCMonth();
+    const day2 = d2.getUTCDate();
+    const monthDiff = (y2 - y1) * 12 + (m2 - m1);
+    const dayDiff = day2 - day1;
+    const totalMonths = monthDiff + dayDiff / 30.4368;
+    return totalMonths / 12;
   };
 
   const getCompanyData = () => {
@@ -1299,7 +1300,16 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
   const getYearDiff = (date1, date2) => {
     const d1 = new Date(date1.length === 7 ? `${date1}-01` : date1);
     const d2 = new Date(date2.length === 7 ? `${date2}-01` : date2);
-    return (d2.getTime() - d1.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+    const y1 = d1.getUTCFullYear();
+    const m1 = d1.getUTCMonth();
+    const day1 = d1.getUTCDate();
+    const y2 = d2.getUTCFullYear();
+    const m2 = d2.getUTCMonth();
+    const day2 = d2.getUTCDate();
+    const monthDiff = (y2 - y1) * 12 + (m2 - m1);
+    const dayDiff = day2 - day1;
+    const totalMonths = monthDiff + dayDiff / 30.4368;
+    return totalMonths / 12;
   };
 
   const getOverlapYears = (startA, endA, startB, endB) => {
@@ -1337,45 +1347,45 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
         id: `${y}`,
         label: `${y}`,
         start: `${y}-01-01`,
-        end: `${y}-12-31`
+        end: `${y + 1}-01-01`
       });
     } else if (periodType === 'half') {
       periods.push({
         id: `${y}-H1`,
         label: `H1 ${y}`,
         start: `${y}-01-01`,
-        end: `${y}-06-30`
+        end: `${y}-07-01`
       });
       periods.push({
         id: `${y}-H2`,
         label: `H2 ${y}`,
         start: `${y}-07-01`,
-        end: `${y}-12-31`
+        end: `${y + 1}-01-01`
       });
     } else if (periodType === 'quarter') {
       periods.push({
         id: `${y}-Q1`,
         label: `Q1 ${y}`,
         start: `${y}-01-01`,
-        end: `${y}-03-31`
+        end: `${y}-04-01`
       });
       periods.push({
         id: `${y}-Q2`,
         label: `Q2 ${y}`,
         start: `${y}-04-01`,
-        end: `${y}-06-30`
+        end: `${y}-07-01`
       });
       periods.push({
         id: `${y}-Q3`,
         label: `Q3 ${y}`,
         start: `${y}-07-01`,
-        end: `${y}-09-30`
+        end: `${y}-10-01`
       });
       periods.push({
         id: `${y}-Q4`,
         label: `Q4 ${y}`,
         start: `${y}-10-01`,
-        end: `${y}-12-31`
+        end: `${y + 1}-01-01`
       });
     }
   });
@@ -1402,7 +1412,7 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
 
         // Find overlap between [segmentStart, segmentEnd] and period [p.start, p.end]
         let actualPeriodEnd = p.end;
-        if (actualPeriodEnd > cutoffDate) actualPeriodEnd = cutoffDate;
+        if (actualPeriodEnd > normCutoff) actualPeriodEnd = normCutoff;
 
         const overlap = getOverlapYears(segmentStart, segmentEnd, p.start, actualPeriodEnd);
         if (overlap > 0) {
@@ -1416,14 +1426,14 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
     const bonusEarned = compEvents
       .filter(e => {
         const normDate = normalizeDate(e.date);
-        return e.type === 'bonus' && normDate >= p.start && normDate <= p.end && normDate < normCutoff;
+        return e.type === 'bonus' && normDate >= p.start && normDate < p.end && normDate < normCutoff;
       })
       .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, currency), 0);
 
     const vestEarned = compEvents
       .filter(e => {
         const normDate = normalizeDate(e.date);
-        return e.type === 'vest' && normDate >= p.start && normDate <= p.end && normDate < normCutoff;
+        return e.type === 'vest' && normDate >= p.start && normDate < p.end && normDate < normCutoff;
       })
       .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, currency), 0);
 
