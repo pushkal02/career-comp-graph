@@ -767,3 +767,31 @@ input:focus, select:focus, textarea:focus {
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
   background: var(--bg-primary);
 }
+
+/* Premium Interactive Effects for Filters & Company list */
+.filter-pill:hover {
+  border-color: rgba(255, 255, 255, 0.25) !important;
+  color: var(--text-primary) !important;
+  background: rgba(255, 255, 255, 0.03) !important;
+}
+
+.filter-pill.active {
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.06);
+}
+
+.company-earnings-row:hover {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  background: rgba(255, 255, 255, 0.02) !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+}
+
+.stacked-bar-segment {
+  transition: filter 0.2s ease, opacity 0.2s ease;
+  position: relative;
+}
+
+.stacked-bar-segment:hover {
+  filter: brightness(1.25) saturate(1.1);
+  cursor: pointer;
+}

@@ -1,17 +1,19 @@
 import { useState } from 'react';
-import { PlusCircle, Trash2, Shield, TrendingUp, Calendar, Tag, Briefcase } from 'lucide-react';
+import { PlusCircle, Trash2, Shield, TrendingUp, Calendar, Tag, Briefcase, Edit3, X, Check } from 'lucide-react';
 
 export default function EventForm({ 
   salaryEvents, 
   compEvents, 
   onAddSalaryEvent, 
   onAddCompEvent, 
-  onDeleteSalaryEvent, 
+  onEditSalaryEvent,
+  onEditCompEvent,
+  onDeleteSalaryEvent,
   onDeleteCompEvent,
   startDate,
   currency
 }) {
-  const [activeTab, setActiveTab] = useState('add'); // 'add' or 'manage'
+  const [activeTab, setActiveTab] = useState('add'); // 'add', 'manage', or 'edit'
   const [formType, setFormType] = useState('salary'); // 'salary' or 'comp'
 
   // Salary form state
@@ -19,12 +21,25 @@ export default function EventForm({
   const [salaryVal, setSalaryVal] = useState('100000');
   const [salaryType, setSalaryType] = useState('hike'); // hike, promotion, jobswitch
   const [salaryTitle, setSalaryTitle] = useState('');
+  const [salaryWorkType, setSalaryWorkType] = useState('Company'); // Company, Freelance, Self-Employed
+  const [salaryCompany, setSalaryCompany] = useState('');
 
   // Comp form state
   const [compDate, setCompDate] = useState(startDate || '2024-01');
   const [compAmount, setCompAmount] = useState('10000');
   const [compType, setCompType] = useState('bonus'); // bonus, grant, vest
   const [compTitle, setCompTitle] = useState('');
+  const [compWorkType, setCompWorkType] = useState('Company'); // Company, Freelance, Self-Employed
+  const [compCompany, setCompCompany] = useState('');
+
+  // Editing state
+  const [editingEvent, setEditingEvent] = useState(null); // stores { ...event, eventCategory: 'salary'|'comp' }
+  const [editDate, setEditDate] = useState('');
+  const [editVal, setEditVal] = useState('');
+  const [editType, setEditType] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editWorkType, setEditWorkType] = useState('Company');
+  const [editCompany, setEditCompany] = useState('');
 
   // Sync date inputs when baseline changes (during render)
   const [prevStartDate, setPrevStartDate] = useState(startDate);
@@ -42,11 +57,13 @@ export default function EventForm({
       date: salaryDate,
       salary: Number(salaryVal),
       type: salaryType,
-      title: salaryTitle.trim() || getDefaultSalaryTitle(salaryType)
+      title: salaryTitle.trim() || getDefaultSalaryTitle(salaryType),
+      company: salaryWorkType === 'Company' ? salaryCompany.trim() || 'Self-Employed' : salaryWorkType
     });
 
     // Reset inputs
     setSalaryTitle('');
+    setSalaryCompany('');
   };
 
   const handleCompSubmit = (e) => {
@@ -57,11 +74,68 @@ export default function EventForm({
       date: compDate,
       amount: Number(compAmount),
       type: compType,
-      title: compTitle.trim() || getDefaultCompTitle(compType)
+      title: compTitle.trim() || getDefaultCompTitle(compType),
+      company: compWorkType === 'Company' ? compCompany.trim() || 'Self-Employed' : compWorkType
     });
 
     // Reset inputs
     setCompTitle('');
+    setCompCompany('');
+  };
+
+  const startEdit = (item) => {
+    setEditingEvent(item);
+    setEditDate(item.date);
+    const valStr = item.eventCategory === 'salary' ? item.salary.toString() : item.amount.toString();
+    setEditVal(valStr);
+    setEditType(item.type);
+    setEditTitle(item.title || '');
+
+    const itemCompany = item.company || 'Self-Employed';
+    if (['Freelance', 'Self-Employed'].includes(itemCompany)) {
+      setEditWorkType(itemCompany);
+      setEditCompany('');
+    } else {
+      setEditWorkType('Company');
+      setEditCompany(itemCompany);
+    }
+    setActiveTab('edit');
+  };
+
+  const handleEditSubmit = (e) => {
+    e.preventDefault();
+    if (!editDate || !editVal || Number(editVal) === 0) return;
+
+    const isSalary = editingEvent.eventCategory === 'salary';
+    const finalCompany = editWorkType === 'Company' ? editCompany.trim() || 'Self-Employed' : editWorkType;
+
+    if (isSalary) {
+      onEditSalaryEvent({
+        id: editingEvent.id,
+        date: editDate,
+        salary: Number(editVal),
+        type: editType,
+        title: editTitle.trim() || getDefaultSalaryTitle(editType),
+        company: finalCompany
+      });
+    } else {
+      onEditCompEvent({
+        id: editingEvent.id,
+        date: editDate,
+        amount: Number(editVal),
+        type: editType,
+        title: editTitle.trim() || getDefaultCompTitle(editType),
+        company: finalCompany
+      });
+    }
+
+    setEditingEvent(null);
+    setActiveTab('manage');
+  };
+
+  const cancelEdit = () => {
+    setEditingEvent(null);
+    setActiveTab('manage');
   };
 
   const getDefaultSalaryTitle = (type) => {
@@ -124,19 +198,33 @@ export default function EventForm({
       <div className="tab-container">
         <button 
           className={`tab-btn ${activeTab === 'add' ? 'active' : ''}`}
-          onClick={() => setActiveTab('add')}
+          onClick={() => {
+            setActiveTab('add');
+            setEditingEvent(null);
+          }}
         >
           Add Event
         </button>
         <button 
           className={`tab-btn ${activeTab === 'manage' ? 'active' : ''}`}
-          onClick={() => setActiveTab('manage')}
+          onClick={() => {
+            setActiveTab('manage');
+            setEditingEvent(null);
+          }}
         >
           Manage ({allEventsChronological.length})
         </button>
+        {activeTab === 'edit' && editingEvent && (
+          <button 
+            className="tab-btn active"
+            style={{ borderBottomColor: 'var(--color-primary)', color: 'var(--color-primary)' }}
+          >
+            Edit Event
+          </button>
+        )}
       </div>
 
-      {activeTab === 'add' ? (
+      {activeTab === 'add' && (
         <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {/* Sub tab for form selection */}
           <div style={{ display: 'flex', gap: '0.5rem', background: 'rgba(255,255,255,0.03)', padding: '0.25rem', borderRadius: '8px' }}>
@@ -147,7 +235,8 @@ export default function EventForm({
                 border: formType === 'salary' ? '1px solid var(--color-primary)' : '1px solid transparent',
                 color: formType === 'salary' ? 'var(--text-primary)' : 'var(--text-secondary)',
                 fontSize: '0.85rem',
-                padding: '0.4rem'
+                padding: '0.4rem',
+                flex: 1
               }}
               onClick={() => setFormType('salary')}
             >
@@ -160,7 +249,8 @@ export default function EventForm({
                 border: formType === 'comp' ? '1px solid var(--color-primary)' : '1px solid transparent',
                 color: formType === 'comp' ? 'var(--text-primary)' : 'var(--text-secondary)',
                 fontSize: '0.85rem',
-                padding: '0.4rem'
+                padding: '0.4rem',
+                flex: 1
               }}
               onClick={() => setFormType('comp')}
             >
@@ -204,6 +294,43 @@ export default function EventForm({
                   onChange={(e) => setSalaryVal(e.target.value)}
                   required
                 />
+              </div>
+
+              <div className="form-group">
+                <label><Briefcase size={12} style={{ marginRight: 4 }} /> Company / Work Context</label>
+                <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.25rem' }}>
+                  {['Company', 'Freelance', 'Self-Employed'].map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      className="btn"
+                      style={{
+                        flex: 1,
+                        padding: '0.35rem 0.5rem',
+                        fontSize: '0.78rem',
+                        background: salaryWorkType === type ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                        border: salaryWorkType === type ? '1px solid var(--color-primary)' : '1px solid var(--border-color)',
+                        color: salaryWorkType === type ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      }}
+                      onClick={() => {
+                        setSalaryWorkType(type);
+                        if (type !== 'Company') setSalaryCompany(type);
+                        else setSalaryCompany('');
+                      }}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+                {salaryWorkType === 'Company' && (
+                  <input
+                    type="text"
+                    placeholder="Enter Company Name (e.g. Google)"
+                    value={salaryCompany}
+                    onChange={(e) => setSalaryCompany(e.target.value)}
+                    required={salaryWorkType === 'Company'}
+                  />
+                )}
               </div>
 
               <div className="form-group">
@@ -259,6 +386,43 @@ export default function EventForm({
               </div>
 
               <div className="form-group">
+                <label><Briefcase size={12} style={{ marginRight: 4 }} /> Company / Work Context</label>
+                <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.25rem' }}>
+                  {['Company', 'Freelance', 'Self-Employed'].map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      className="btn"
+                      style={{
+                        flex: 1,
+                        padding: '0.35rem 0.5rem',
+                        fontSize: '0.78rem',
+                        background: compWorkType === type ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                        border: compWorkType === type ? '1px solid var(--color-primary)' : '1px solid var(--border-color)',
+                        color: compWorkType === type ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      }}
+                      onClick={() => {
+                        setCompWorkType(type);
+                        if (type !== 'Company') setCompCompany(type);
+                        else setCompCompany('');
+                      }}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+                {compWorkType === 'Company' && (
+                  <input
+                    type="text"
+                    placeholder="Enter Company Name (e.g. Google)"
+                    value={compCompany}
+                    onChange={(e) => setCompCompany(e.target.value)}
+                    required={compWorkType === 'Company'}
+                  />
+                )}
+              </div>
+
+              <div className="form-group">
                 <label><Briefcase size={12} style={{ marginRight: 4 }} /> Description (Optional)</label>
                 <input 
                   type="text" 
@@ -274,8 +438,124 @@ export default function EventForm({
             </form>
           )}
         </div>
-      ) : (
-        <div className="events-manager-container">
+      )}
+
+      {activeTab === 'edit' && editingEvent && (
+        <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <h3 style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Edit3 size={15} style={{ color: 'var(--color-primary)' }} />
+            Edit {editingEvent.eventCategory === 'salary' ? 'Base Salary' : 'Payout / Grant'}
+          </h3>
+
+          <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div className="form-group">
+              <label><Calendar size={12} style={{ marginRight: 4 }} /> Date</label>
+              <input 
+                type="month" 
+                min="2000-01" 
+                value={editDate}
+                onChange={(e) => setEditDate(e.target.value)}
+                required
+              />
+            </div>
+
+            {editingEvent.eventCategory === 'salary' ? (
+              <div className="form-group">
+                <label><Tag size={12} style={{ marginRight: 4 }} /> Event Type</label>
+                <select value={editType} onChange={(e) => setEditType(e.target.value)}>
+                  <option value="hike">Base Salary Hike</option>
+                  <option value="promotion">Promotion Hike</option>
+                  <option value="jobswitch">Job Switch Increase</option>
+                </select>
+              </div>
+            ) : (
+              <div className="form-group">
+                <label><Tag size={12} style={{ marginRight: 4 }} /> Category</label>
+                <select value={editType} onChange={(e) => setEditType(e.target.value)}>
+                  <option value="bonus">Cash Bonus</option>
+                  <option value="grant">Stock Grant (Initial/Refresh)</option>
+                  <option value="vest">Vested Stock (RSUs / Options)</option>
+                </select>
+              </div>
+            )}
+
+            <div className="form-group">
+              <label>
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.25)', color: 'var(--color-primary)', fontSize: '9px', fontWeight: '800', marginRight: '6px', fontFamily: 'var(--font-mono)', verticalAlign: 'middle', lineHeight: 1 }}>
+                  {getCurrencySymbol(currency || 'USD').trim()}
+                </span>
+                {editingEvent.eventCategory === 'salary' ? 'Annual Base Salary' : 'Amount / Value'} ({getCurrencySymbol(currency || 'USD')})
+              </label>
+              <input 
+                type="number" 
+                step="any"
+                value={editVal}
+                onChange={(e) => setEditVal(e.target.value)}
+                required
+              />
+            </div>
+
+            <div className="form-group">
+              <label><Briefcase size={12} style={{ marginRight: 4 }} /> Company / Work Context</label>
+              <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.25rem' }}>
+                {['Company', 'Freelance', 'Self-Employed'].map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    className="btn"
+                    style={{
+                      flex: 1,
+                      padding: '0.35rem 0.5rem',
+                      fontSize: '0.78rem',
+                      background: editWorkType === type ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                      border: editWorkType === type ? '1px solid var(--color-primary)' : '1px solid var(--border-color)',
+                      color: editWorkType === type ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    }}
+                    onClick={() => {
+                      setEditWorkType(type);
+                      if (type !== 'Company') setEditCompany(type);
+                      else setEditCompany('');
+                    }}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+              {editWorkType === 'Company' && (
+                <input
+                  type="text"
+                  placeholder="Enter Company Name (e.g. Google)"
+                  value={editCompany}
+                  onChange={(e) => setEditCompany(e.target.value)}
+                  required={editWorkType === 'Company'}
+                />
+              )}
+            </div>
+
+            <div className="form-group">
+              <label><Briefcase size={12} style={{ marginRight: 4 }} /> Description (Optional)</label>
+              <input 
+                type="text" 
+                placeholder="Description"
+                value={editTitle}
+                onChange={(e) => setEditTitle(e.target.value)}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                <Check size={16} /> Save Changes
+              </button>
+              <button type="button" onClick={cancelEdit} className="btn btn-secondary" style={{ flex: 1 }}>
+                <X size={16} /> Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {activeTab === 'manage' && (
+        <div className="events-manager-container" style={{ flexGrow: 1, overflowY: 'auto' }}>
           {allEventsChronological.length === 0 ? (
             <div className="empty-state">
               <span className="empty-state-icon">📭</span>
@@ -294,27 +574,42 @@ export default function EventForm({
               if (item.type === 'grant') colorClass = 'grant';
               if (item.type === 'vest') colorClass = 'vest';
 
+              const companyTag = item.company || 'Self-Employed';
+
               return (
-                <div key={item.id} className="manager-item">
-                  <div className="manager-item-info">
-                    <div className="manager-item-name">
-                      <span className={`tooltip-badge ${colorClass}`}>{label}</span>
-                      <span style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '120px' }}>
+                <div key={item.id} className="manager-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0.75rem', borderBottom: '1px solid var(--border-color)' }}>
+                  <div className="manager-item-info" style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', overflow: 'hidden', flex: 1, marginRight: '0.5rem' }}>
+                    <div className="manager-item-name" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                      <span className={`tooltip-badge ${colorClass}`} style={{ fontSize: '0.7rem', padding: '0.1rem 0.35rem', textTransform: 'capitalize' }}>{label}</span>
+                      <span style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>
                         {item.title}
                       </span>
                     </div>
-                    <div className="manager-item-meta">
-                      {formatDateLabel(item.date)} • {formatCurrency(isSalary ? item.salary : item.amount)}
-                      {isSalary && ' / yr'}
+                    <div className="manager-item-meta" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      {formatDateLabel(item.date)} • <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatCurrency(isSalary ? item.salary : item.amount)}</span>
+                      {isSalary && ' / yr'} • <strong style={{ color: 'var(--color-primary)' }}>{companyTag}</strong>
                     </div>
                   </div>
-                  <button 
-                    onClick={() => isSalary ? onDeleteSalaryEvent(item.id) : onDeleteCompEvent(item.id)}
-                    className="btn-danger"
-                    style={{ padding: '0.25rem 0.5rem', display: 'flex', alignItems: 'center' }}
-                  >
-                    <Trash2 size={13} />
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.25rem' }}>
+                    <button 
+                      onClick={() => startEdit(item)}
+                      className="btn btn-secondary"
+                      style={{ padding: '0.25rem 0.45rem', display: 'flex', alignItems: 'center', minWidth: 'auto', background: 'rgba(255,255,255,0.03)' }}
+                      title="Edit this event"
+                      type="button"
+                    >
+                      <Edit3 size={12} style={{ color: 'var(--text-secondary)' }} />
+                    </button>
+                    <button 
+                      onClick={() => isSalary ? onDeleteSalaryEvent(item.id) : onDeleteCompEvent(item.id)}
+                      className="btn-danger"
+                      style={{ padding: '0.25rem 0.45rem', display: 'flex', alignItems: 'center', minWidth: 'auto' }}
+                      title="Delete this event"
+                      type="button"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </div>
                 </div>
               );
             })

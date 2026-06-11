@@ -143,6 +143,25 @@ export default function App() {
     setSalaryEvents((prev) => prev.filter(e => e.id !== id));
   };
 
+  // Edit an existing salary change event
+  const handleEditSalaryEvent = (updatedEvent) => {
+    setSalaryEvents((prev) => {
+      // Filter out this event's old version and any other salary event on the updated date
+      const filtered = prev.filter(e => e.id !== updatedEvent.id && e.date !== updatedEvent.date);
+      const updated = [...filtered, updatedEvent].sort((a, b) => a.date.localeCompare(b.date));
+      return updated;
+    });
+  };
+
+  // Edit an existing financial event (bonus, grant, vest)
+  const handleEditCompEvent = (updatedEvent) => {
+    setCompEvents((prev) => {
+      const filtered = prev.filter(e => e.id !== updatedEvent.id);
+      const updated = [...filtered, updatedEvent].sort((a, b) => a.date.localeCompare(b.date));
+      return updated;
+    });
+  };
+
   // Delete a comp event
   const handleDeleteCompEvent = (id) => {
     setCompEvents((prev) => prev.filter(e => e.id !== id));
@@ -360,6 +379,8 @@ export default function App() {
             compEvents={compEvents}
             onAddSalaryEvent={handleAddSalaryEvent}
             onAddCompEvent={handleAddCompEvent}
+            onEditSalaryEvent={handleEditSalaryEvent}
+            onEditCompEvent={handleEditCompEvent}
             onDeleteSalaryEvent={handleDeleteSalaryEvent}
             onDeleteCompEvent={handleDeleteCompEvent}
             startDate={startDate}

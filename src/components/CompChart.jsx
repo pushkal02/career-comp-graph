@@ -7,6 +7,17 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
   const [dimensions, setDimensions] = useState({ width: 800, height: 450 });
   const [hoveredItem, setHoveredItem] = useState(null); // { x, y, title, value, date, type, category }
 
+  // Graph filters state
+  const [filters, setFilters] = useState({
+    salaryLine: true,
+    hike: true,
+    promotion: true,
+    jobswitch: true,
+    bonus: true,
+    grant: true,
+    vest: true
+  });
+
   // Detect container size for responsiveness
   useEffect(() => {
     if (!containerRef.current) return;
@@ -467,6 +478,50 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
         </div>
       </div>
 
+      {/* Event type filters row */}
+      <div className="chart-filters-row" style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '1.25rem', paddingBottom: '0.75rem', borderBottom: '1px solid var(--border-color)', alignItems: 'center' }}>
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700, marginRight: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+          Filter Timeline:
+        </span>
+        {[
+          { key: 'salaryLine', label: 'Salary Line', color: 'var(--color-base)' },
+          { key: 'hike', label: 'Salary Hikes', color: 'var(--color-hike)' },
+          { key: 'promotion', label: 'Promotions', color: 'var(--color-promotion)' },
+          { key: 'jobswitch', label: 'Job Switches', color: 'var(--color-switch)' },
+          { key: 'bonus', label: 'Bonuses', color: 'var(--color-bonus)' },
+          { key: 'grant', label: 'Stock Grants', color: 'var(--color-grant)' },
+          { key: 'vest', label: 'Vesting', color: 'var(--color-vest)' }
+        ].map((filter) => {
+          const isActive = filters[filter.key];
+          const rgbString = filter.key === 'salaryLine' ? '56, 189, 248' : filter.key === 'hike' ? '20, 184, 166' : filter.key === 'promotion' ? '236, 72, 153' : filter.key === 'jobswitch' ? '59, 130, 246' : filter.key === 'bonus' ? '16, 185, 129' : filter.key === 'grant' ? '245, 158, 11' : '168, 85, 247';
+          return (
+            <button
+              key={filter.key}
+              type="button"
+              className={`filter-pill ${isActive ? 'active' : ''}`}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.3rem',
+                padding: '0.2rem 0.55rem',
+                fontSize: '0.72rem',
+                borderRadius: '20px',
+                border: isActive ? `1px solid ${filter.color}` : '1px solid var(--border-color)',
+                background: isActive ? `rgba(${rgbString}, 0.12)` : 'transparent',
+                color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                fontWeight: 600
+              }}
+              onClick={() => setFilters(prev => ({ ...prev, [filter.key]: !prev[filter.key] }))}
+            >
+              <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: filter.color, display: 'inline-block' }}></span>
+              {filter.label}
+            </button>
+          );
+        })}
+      </div>
+
       <div ref={containerRef} className="chart-container">
         {salaryEvents.length === 0 ? (
           <div className="empty-state" style={{ height: '100%' }}>
@@ -536,13 +591,13 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
             ))}
 
             {/* Salary Area Shadow */}
-            {salaryAreaD && <path className="chart-line-shadow" d={salaryAreaD} />}
+            {filters.salaryLine && salaryAreaD && <path className="chart-line-shadow" d={salaryAreaD} />}
 
             {/* Salary Step Line */}
-            {salaryPathD && <path className="chart-line-salary" d={salaryPathD} />}
+            {filters.salaryLine && salaryPathD && <path className="chart-line-salary" d={salaryPathD} />}
 
             {/* Salary Step Line Labels */}
-            {salarySegments.map((seg, idx) => {
+            {filters.salaryLine && salarySegments.map((seg, idx) => {
               const width = seg.endX - seg.startX;
               if (width < 45) return null; // Skip if too narrow to prevent cluttering
               const startOffset = idx === 0 ? 8 : 14;
@@ -592,6 +647,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
             {sortedSalaryEvents.map((evt, idx) => {
               // Starting base doesn't need a hike icon unless user wants it.
               if (idx === 0) return null;
+              if (!filters[evt.type]) return null;
               
               const x = getX(evt.date);
               const y = getY(evt.salary);
@@ -619,6 +675,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
                       subValue: `+${pctDiff.toFixed(0)}% change`,
                       date: formatDateLabel(evt.date),
                       type: evt.type,
+                      company: evt.company || 'Self-Employed',
                       category: 'salary'
                     });
                   }}
@@ -656,8 +713,9 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
             {/* Financial Overlay Circles (Bonus, Grant, Vest) */}
             {(() => {
               // Group financial events by date to draw overlapping ones as concentric doughnuts
+              const filteredCompEvents = compEvents.filter(evt => filters[evt.type]);
               const compGroupsByDate = {};
-              compEvents.forEach((evt) => {
+              filteredCompEvents.forEach((evt) => {
                 if (!compGroupsByDate[evt.date]) {
                   compGroupsByDate[evt.date] = [];
                 }
@@ -730,6 +788,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
                                 value: formatFullCurrency(evt.amount),
                                 date: formatDateLabel(evt.date),
                                 type: evt.type,
+                                company: evt.company || 'Self-Employed',
                                 category: 'comp'
                               });
                             }}
@@ -790,6 +849,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
                                 value: formatFullCurrency(evt.amount),
                                 date: formatDateLabel(evt.date),
                                 type: evt.type,
+                                company: evt.company || 'Self-Employed',
                                 category: 'comp'
                               });
                             }}
@@ -857,6 +917,11 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
               </span>
             </div>
             <div className="tooltip-value">{hoveredItem.value}</div>
+            {hoveredItem.company && (
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem', marginBottom: '0.1rem' }}>
+                Employer: <strong style={{ color: 'var(--color-primary)' }}>{hoveredItem.company}</strong>
+              </div>
+            )}
             {hoveredItem.subValue && (
               <div style={{ fontSize: '0.75rem', color: 'var(--color-hike)', fontWeight: 600 }}>
                 {hoveredItem.subValue}
@@ -866,6 +931,319 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
           </div>
         )}
       </div>
+
+      {/* Company Contribution Amount List Section */}
+      {salaryEvents.length > 0 && (
+        <CompanyEarningsList 
+          salaryEvents={salaryEvents}
+          compEvents={compEvents}
+          startDate={startDate}
+          formatFullCurrency={formatFullCurrency}
+        />
+      )}
+    </div>
+  );
+}
+
+// Company Earnings List helper component
+function CompanyEarningsList({ salaryEvents, compEvents, startDate, formatFullCurrency }) {
+  const [sortBy, setSortBy] = useState('amount'); // 'amount' or 'time'
+  const [sortOrder, setSortOrder] = useState('desc'); // 'desc' or 'asc'
+
+  const sortedSalaryEvents = [...salaryEvents].sort((a, b) => a.date.localeCompare(b.date));
+  const baselineDate = startDate || "2024-01";
+  
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+  const cutoffDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+
+  const parseDate = (dateStr) => {
+    const [y, m] = dateStr.split('-').map(Number);
+    return { year: y, month: m - 1 };
+  };
+
+  const getYearDiff = (date1, date2) => {
+    const d1 = parseDate(date1);
+    const d2 = parseDate(date2);
+    const months1 = d1.year * 12 + d1.month;
+    const months2 = d2.year * 12 + d2.month;
+    return (months2 - months1) / 12;
+  };
+
+  const getCompanyData = () => {
+    const data = {};
+
+    // 1. Calculate Base salary contribution
+    if (sortedSalaryEvents.length > 0 && baselineDate < cutoffDate) {
+      for (let i = 0; i < sortedSalaryEvents.length; i++) {
+        const currentEvent = sortedSalaryEvents[i];
+        const nextEvent = sortedSalaryEvents[i + 1];
+        
+        let segmentStart = currentEvent.date;
+        if (segmentStart < baselineDate) segmentStart = baselineDate;
+        if (segmentStart > cutoffDate) segmentStart = cutoffDate;
+        
+        let segmentEnd = nextEvent ? nextEvent.date : cutoffDate;
+        if (segmentEnd < baselineDate) segmentEnd = baselineDate;
+        if (segmentEnd > cutoffDate) segmentEnd = cutoffDate;
+        
+        const durationYears = getYearDiff(segmentStart, segmentEnd);
+        if (durationYears > 0) {
+          const earned = currentEvent.salary * durationYears;
+          const companyName = currentEvent.company || 'Self-Employed';
+          
+          if (!data[companyName]) {
+            data[companyName] = { name: companyName, base: 0, bonus: 0, vest: 0, total: 0, earliestDate: currentEvent.date, latestDate: currentEvent.date };
+          }
+          data[companyName].base += earned;
+          data[companyName].total += earned;
+          
+          if (currentEvent.date < data[companyName].earliestDate) data[companyName].earliestDate = currentEvent.date;
+          if (currentEvent.date > data[companyName].latestDate) data[companyName].latestDate = currentEvent.date;
+        }
+      }
+    }
+
+    // 2. Add comp events
+    compEvents.forEach(evt => {
+      if (evt.date >= cutoffDate) return;
+
+      const companyName = evt.company || 'Self-Employed';
+      if (!data[companyName]) {
+        data[companyName] = { name: companyName, base: 0, bonus: 0, vest: 0, total: 0, earliestDate: evt.date, latestDate: evt.date };
+      }
+
+      const val = Number(evt.amount);
+      if (evt.type === 'bonus') {
+        data[companyName].bonus += val;
+        data[companyName].total += val;
+      } else if (evt.type === 'vest') {
+        data[companyName].vest += val;
+        data[companyName].total += val;
+      }
+      
+      if (evt.date < data[companyName].earliestDate) data[companyName].earliestDate = evt.date;
+      if (evt.date > data[companyName].latestDate) data[companyName].latestDate = evt.date;
+    });
+
+    return Object.values(data);
+  };
+
+  const companies = getCompanyData();
+
+  // Sort companies
+  const sortedCompanies = [...companies].sort((a, b) => {
+    if (sortBy === 'amount') {
+      return sortOrder === 'desc' ? b.total - a.total : a.total - b.total;
+    } else {
+      // Sort by time (latest active date)
+      return sortOrder === 'desc' 
+        ? b.latestDate.localeCompare(a.latestDate) 
+        : a.latestDate.localeCompare(b.latestDate);
+    }
+  });
+
+  const totalRealizedCareer = companies.reduce((sum, c) => sum + c.total, 0);
+
+  const formatDateLabel = (dateStr) => {
+    if (!dateStr) return '';
+    const [year, month] = dateStr.split('-');
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${months[Number(month) - 1]} ${year}`;
+  };
+
+  return (
+    <div style={{ marginTop: '2.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div>
+          <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+            <span>💼</span> Realized Earnings Contribution by Organization
+          </h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.78rem', marginTop: '0.15rem' }}>
+            Attributed base salary, bonuses, and vests accumulated up to the end of last completed month
+          </p>
+        </div>
+
+        {/* Sorting controls */}
+        {companies.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600 }}>Sort by:</span>
+            <select 
+              value={sortBy} 
+              onChange={(e) => setSortBy(e.target.value)}
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '0.75rem',
+                background: 'rgba(255, 255, 255, 0.04)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)',
+                height: '28px',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="amount">Total Amount</option>
+              <option value="time">Latest Activity</option>
+            </select>
+            <button
+              onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+              className="btn btn-secondary"
+              style={{
+                padding: '0.25rem 0.5rem',
+                fontSize: '0.75rem',
+                height: '28px',
+                display: 'flex',
+                alignItems: 'center',
+                minWidth: 'auto',
+                gap: '0.2rem'
+              }}
+              title={sortOrder === 'desc' ? 'Sort Ascending' : 'Sort Descending'}
+            >
+              {sortOrder === 'desc' ? '↓ Desc' : '↑ Asc'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {sortedCompanies.length === 0 ? (
+        <div style={{ padding: '2rem', textAlign: 'center', background: 'rgba(255,255,255,0.01)', borderRadius: '10px', border: '1px dashed var(--border-color)' }}>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>No completed earnings recorded yet. Add your compensation events to see the contributions.</p>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {sortedCompanies.map((company) => {
+            const percentage = totalRealizedCareer > 0 ? (company.total / totalRealizedCareer) * 100 : 0;
+            
+            // Stack calculations
+            const basePct = company.total > 0 ? (company.base / company.total) * 100 : 0;
+            const bonusPct = company.total > 0 ? (company.bonus / company.total) * 100 : 0;
+            const vestPct = company.total > 0 ? (company.vest / company.total) * 100 : 0;
+
+            return (
+              <div 
+                key={company.name} 
+                className="company-earnings-row"
+                style={{
+                  background: 'rgba(255,255,255,0.01)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '10px',
+                  padding: '0.85rem 1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.5rem',
+                  transition: 'all 0.2s ease',
+                  position: 'relative'
+                }}
+              >
+                {/* Info Header */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>{company.name}</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      ({formatDateLabel(company.earliestDate)} - {formatDateLabel(company.latestDate)})
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
+                    <span style={{ fontSize: '0.88rem', fontWeight: 800, color: 'var(--text-primary)', fontFamily: 'var(--font-mono)' }}>
+                      {formatFullCurrency(company.total)}
+                    </span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--color-primary)', fontWeight: 700, background: 'rgba(99,102,241,0.1)', padding: '0.1rem 0.4rem', borderRadius: '4px' }}>
+                      {percentage.toFixed(1)}%
+                    </span>
+                  </div>
+                </div>
+
+                {/* Stacked Progress Bar */}
+                <div 
+                  className="stacked-bar-container"
+                  style={{
+                    height: '10px',
+                    borderRadius: '5px',
+                    background: 'rgba(255,255,255,0.03)',
+                    border: '1px solid rgba(255,255,255,0.05)',
+                    overflow: 'hidden',
+                    display: 'flex',
+                    width: '100%',
+                    position: 'relative'
+                  }}
+                >
+                  <div 
+                    className="stacked-bar-fill"
+                    style={{
+                      display: 'flex',
+                      height: '100%',
+                      width: `${percentage}%`,
+                      borderRadius: '5px',
+                      overflow: 'hidden',
+                      transition: 'width 0.6s cubic-bezier(0.16, 1, 0.3, 1)'
+                    }}
+                  >
+                    {company.base > 0 && (
+                      <div 
+                        className="stacked-bar-segment"
+                        style={{ 
+                          width: `${basePct}%`, 
+                          background: 'var(--color-base)',
+                          height: '100%',
+                          transition: 'width 0.3s ease'
+                        }}
+                        title={`Base Salary: ${formatFullCurrency(company.base)} (${basePct.toFixed(0)}%)`}
+                      />
+                    )}
+                    {company.bonus > 0 && (
+                      <div 
+                        className="stacked-bar-segment"
+                        style={{ 
+                          width: `${bonusPct}%`, 
+                          background: 'var(--color-bonus)',
+                          height: '100%',
+                          transition: 'width 0.3s ease'
+                        }}
+                        title={`Bonus: ${formatFullCurrency(company.bonus)} (${bonusPct.toFixed(0)}%)`}
+                      />
+                    )}
+                    {company.vest > 0 && (
+                      <div 
+                        className="stacked-bar-segment"
+                        style={{ 
+                          width: `${vestPct}%`, 
+                          background: 'var(--color-vest)',
+                          height: '100%',
+                          transition: 'width 0.3s ease'
+                        }}
+                        title={`Stock Vested: ${formatFullCurrency(company.vest)} (${vestPct.toFixed(0)}%)`}
+                      />
+                    )}
+                  </div>
+                </div>
+
+                {/* Micro breakdowns detail text shown below bar */}
+                <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.1rem', flexWrap: 'wrap' }}>
+                  {company.base > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-base)' }}></span>
+                      <span>Base: <strong>{formatFullCurrency(company.base)}</strong> ({basePct.toFixed(0)}%)</span>
+                    </div>
+                  )}
+                  {company.bonus > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-bonus)' }}></span>
+                      <span>Bonus: <strong>{formatFullCurrency(company.bonus)}</strong> ({bonusPct.toFixed(0)}%)</span>
+                    </div>
+                  )}
+                  {company.vest > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-vest)' }}></span>
+                      <span>Vested: <strong>{formatFullCurrency(company.vest)}</strong> ({vestPct.toFixed(0)}%)</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
