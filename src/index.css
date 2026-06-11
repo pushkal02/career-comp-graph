@@ -251,7 +251,7 @@ body {
 
 @media (min-width: 1024px) {
   .dashboard-grid {
-    grid-template-columns: 3fr 1fr;
+    grid-template-columns: 1fr 380px;
   }
 }
 
@@ -259,12 +259,14 @@ body {
   display: flex;
   flex-direction: column;
   gap: 2rem;
+  min-width: 0;
 }
 
 .sidebar-panel {
   display: flex;
   flex-direction: column;
   gap: 2rem;
+  min-width: 0;
 }
 
 /* Dashboard Metrics */
