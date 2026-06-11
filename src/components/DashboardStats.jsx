@@ -25,20 +25,13 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
     }).format(val);
   };
 
-  // Helper to parse date string YYYY-MM into numeric year/month
-  const parseDate = (dateStr) => {
-    const [year, month] = dateStr.split('-').map(Number);
-    return { year, month: month - 1 }; // month 0-indexed
+  // Calculate chronological difference in years (supporting day precision)
+  const getYearDiff = (date1, date2) => {
+    const d1 = new Date(date1.length === 7 ? `${date1}-01` : date1);
+    const d2 = new Date(date2.length === 7 ? `${date2}-01` : date2);
+    return (d2.getTime() - d1.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
   };
 
-  // Calculate chronological difference in years
-  const getYearDiff = (date1, date2) => {
-    const d1 = parseDate(date1);
-    const d2 = parseDate(date2);
-    const months1 = d1.year * 12 + d1.month;
-    const months2 = d2.year * 12 + d2.month;
-    return (months2 - months1) / 12;
-  };
 
   // 1. Calculate current salary (most recent salary event)
   const sortedSalaryEvents = [...salaryEvents].sort((a, b) => a.date.localeCompare(b.date));

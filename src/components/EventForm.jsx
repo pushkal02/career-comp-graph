@@ -16,8 +16,50 @@ export default function EventForm({
   const [activeTab, setActiveTab] = useState('add'); // 'add', 'manage', or 'edit'
   const [formType, setFormType] = useState('salary'); // 'salary' or 'comp'
 
+  const startYearNum = Number((startDate || '2024-01').split('-')[0]);
+  const yearsOptions = [];
+  for (let y = startYearNum - 5; y <= startYearNum + 15; y++) {
+    yearsOptions.push(y.toString());
+  }
+
+  const monthsOptions = [
+    { value: '01', label: 'Jan' },
+    { value: '02', label: 'Feb' },
+    { value: '03', label: 'Mar' },
+    { value: '04', label: 'Apr' },
+    { value: '05', label: 'May' },
+    { value: '06', label: 'Jun' },
+    { value: '07', label: 'Jul' },
+    { value: '08', label: 'Aug' },
+    { value: '09', label: 'Sep' },
+    { value: '10', label: 'Oct' },
+    { value: '11', label: 'Nov' },
+    { value: '12', label: 'Dec' }
+  ];
+
+  const daysOptions = [];
+  for (let d = 1; d <= 31; d++) {
+    daysOptions.push(String(d).padStart(2, '0'));
+  }
+
+  const getCombinedDate = (y, m, d) => {
+    return d ? `${y}-${m}-${d}` : `${y}-${m}`;
+  };
+
+  const parseCombinedDate = (dateStr) => {
+    if (!dateStr) return { year: '', month: '', day: '' };
+    const parts = dateStr.split('-');
+    return {
+      year: parts[0] || '',
+      month: parts[1] || '',
+      day: parts[2] || ''
+    };
+  };
+
   // Salary form state
-  const [salaryDate, setSalaryDate] = useState(startDate || '2024-01');
+  const [salaryYear, setSalaryYear] = useState(() => (startDate || '2024-01').split('-')[0]);
+  const [salaryMonth, setSalaryMonth] = useState(() => (startDate || '2024-01').split('-')[1]);
+  const [salaryDay, setSalaryDay] = useState('');
   const [salaryVal, setSalaryVal] = useState('100000');
   const [salaryType, setSalaryType] = useState('hike'); // hike, promotion, jobswitch
   const [salaryCurrency, setSalaryCurrency] = useState(currency || 'USD');
@@ -26,7 +68,9 @@ export default function EventForm({
   const [salaryCompany, setSalaryCompany] = useState('');
 
   // Comp form state
-  const [compDate, setCompDate] = useState(startDate || '2024-01');
+  const [compYear, setCompYear] = useState(() => (startDate || '2024-01').split('-')[0]);
+  const [compMonth, setCompMonth] = useState(() => (startDate || '2024-01').split('-')[1]);
+  const [compDay, setCompDay] = useState('');
   const [compAmount, setCompAmount] = useState('10000');
   const [compType, setCompType] = useState('bonus'); // bonus, grant, vest
   const [compCurrency, setCompCurrency] = useState(currency || 'USD');
@@ -36,7 +80,9 @@ export default function EventForm({
 
   // Editing state
   const [editingEvent, setEditingEvent] = useState(null); // stores { ...event, eventCategory: 'salary'|'comp' }
-  const [editDate, setEditDate] = useState('');
+  const [editYear, setEditYear] = useState('');
+  const [editMonth, setEditMonth] = useState('');
+  const [editDay, setEditDay] = useState('');
   const [editVal, setEditVal] = useState('');
   const [editType, setEditType] = useState('');
   const [editCurrency, setEditCurrency] = useState('USD');
@@ -48,8 +94,13 @@ export default function EventForm({
   const [prevStartDate, setPrevStartDate] = useState(startDate);
   if (startDate !== prevStartDate) {
     setPrevStartDate(startDate);
-    setSalaryDate(startDate || '2024-01');
-    setCompDate(startDate || '2024-01');
+    const [y, m] = (startDate || '2024-01').split('-');
+    setSalaryYear(y);
+    setSalaryMonth(m);
+    setSalaryDay('');
+    setCompYear(y);
+    setCompMonth(m);
+    setCompDay('');
   }
 
   // Sync default currency changes
@@ -65,10 +116,10 @@ export default function EventForm({
 
   const handleSalarySubmit = (e) => {
     e.preventDefault();
-    if (!salaryDate || !salaryVal || Number(salaryVal) === 0) return;
+    if (!salaryYear || !salaryMonth || !salaryVal || Number(salaryVal) === 0) return;
 
     onAddSalaryEvent({
-      date: salaryDate,
+      date: getCombinedDate(salaryYear, salaryMonth, salaryDay),
       salary: Number(salaryVal),
       type: salaryType,
       currency: salaryCurrency,
@@ -83,10 +134,10 @@ export default function EventForm({
 
   const handleCompSubmit = (e) => {
     e.preventDefault();
-    if (!compDate || !compAmount || Number(compAmount) === 0) return;
+    if (!compYear || !compMonth || !compAmount || Number(compAmount) === 0) return;
 
     onAddCompEvent({
-      date: compDate,
+      date: getCombinedDate(compYear, compMonth, compDay),
       amount: Number(compAmount),
       type: compType,
       currency: compCurrency,
@@ -101,7 +152,11 @@ export default function EventForm({
 
   const startEdit = (item) => {
     setEditingEvent(item);
-    setEditDate(item.date);
+    const parsed = parseCombinedDate(item.date);
+    setEditYear(parsed.year);
+    setEditMonth(parsed.month);
+    setEditDay(parsed.day);
+    
     const valStr = item.eventCategory === 'salary' ? item.salary.toString() : item.amount.toString();
     setEditVal(valStr);
     setEditType(item.type);
@@ -121,15 +176,16 @@ export default function EventForm({
 
   const handleEditSubmit = (e) => {
     e.preventDefault();
-    if (!editDate || !editVal || Number(editVal) === 0) return;
+    if (!editYear || !editMonth || !editVal || Number(editVal) === 0) return;
 
     const isSalary = editingEvent.eventCategory === 'salary';
     const finalCompany = editWorkType === 'Company' ? editCompany.trim() || 'Self-Employed' : editWorkType;
+    const finalDate = getCombinedDate(editYear, editMonth, editDay);
 
     if (isSalary) {
       onEditSalaryEvent({
         id: editingEvent.id,
-        date: editDate,
+        date: finalDate,
         salary: Number(editVal),
         type: editType,
         currency: editCurrency,
@@ -139,7 +195,7 @@ export default function EventForm({
     } else {
       onEditCompEvent({
         id: editingEvent.id,
-        date: editDate,
+        date: finalDate,
         amount: Number(editVal),
         type: editType,
         currency: editCurrency,
@@ -207,9 +263,13 @@ export default function EventForm({
 
   const formatDateLabel = (dateStr) => {
     if (!dateStr) return '';
-    const [year, month] = dateStr.split('-');
+    const parts = dateStr.split('-');
+    const year = parts[0];
+    const month = parts[1];
+    const day = parts[2];
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${months[Number(month) - 1]} ${year}`;
+    const monthLabel = months[Number(month) - 1] || month;
+    return day ? `${Number(day)} ${monthLabel} ${year}` : `${monthLabel} ${year}`;
   };
 
   return (
@@ -280,14 +340,37 @@ export default function EventForm({
           {formType === 'salary' ? (
             <form onSubmit={handleSalarySubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="form-group">
-                <label><Calendar size={12} style={{ marginRight: 4 }} /> Date</label>
-                <input 
-                  type="month" 
-                  min="2000-01" 
-                  value={salaryDate}
-                  onChange={(e) => setSalaryDate(e.target.value)}
-                  required
-                />
+                <label><Calendar size={12} style={{ marginRight: 4 }} /> Date (Year / Month / Optional Day)</label>
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <select 
+                    value={salaryYear} 
+                    onChange={(e) => setSalaryYear(e.target.value)}
+                    style={{ flex: 2 }}
+                  >
+                    {yearsOptions.map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  <select 
+                    value={salaryMonth} 
+                    onChange={(e) => setSalaryMonth(e.target.value)}
+                    style={{ flex: 2 }}
+                  >
+                    {monthsOptions.map(m => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                  <select 
+                    value={salaryDay} 
+                    onChange={(e) => setSalaryDay(e.target.value)}
+                    style={{ flex: 1.5 }}
+                  >
+                    <option value="">No Day</option>
+                    {daysOptions.map(d => (
+                      <option key={d} value={d}>{Number(d)}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="form-group">
@@ -384,14 +467,37 @@ export default function EventForm({
           ) : (
             <form onSubmit={handleCompSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="form-group">
-                <label><Calendar size={12} style={{ marginRight: 4 }} /> Date</label>
-                <input 
-                  type="month" 
-                  min="2000-01" 
-                  value={compDate}
-                  onChange={(e) => setCompDate(e.target.value)}
-                  required
-                />
+                <label><Calendar size={12} style={{ marginRight: 4 }} /> Date (Year / Month / Optional Day)</label>
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <select 
+                    value={compYear} 
+                    onChange={(e) => setCompYear(e.target.value)}
+                    style={{ flex: 2 }}
+                  >
+                    {yearsOptions.map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  <select 
+                    value={compMonth} 
+                    onChange={(e) => setCompMonth(e.target.value)}
+                    style={{ flex: 2 }}
+                  >
+                    {monthsOptions.map(m => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                  <select 
+                    value={compDay} 
+                    onChange={(e) => setCompDay(e.target.value)}
+                    style={{ flex: 1.5 }}
+                  >
+                    <option value="">No Day</option>
+                    {daysOptions.map(d => (
+                      <option key={d} value={d}>{Number(d)}</option>
+                    ))}
+                  </select>
+                </div>
               </div>
 
               <div className="form-group">
@@ -498,14 +604,37 @@ export default function EventForm({
 
           <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div className="form-group">
-              <label><Calendar size={12} style={{ marginRight: 4 }} /> Date</label>
-              <input 
-                type="month" 
-                min="2000-01" 
-                value={editDate}
-                onChange={(e) => setEditDate(e.target.value)}
-                required
-              />
+              <label><Calendar size={12} style={{ marginRight: 4 }} /> Date (Year / Month / Optional Day)</label>
+              <div style={{ display: 'flex', gap: '0.4rem' }}>
+                <select 
+                  value={editYear} 
+                  onChange={(e) => setEditYear(e.target.value)}
+                  style={{ flex: 2 }}
+                >
+                  {yearsOptions.map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+                <select 
+                  value={editMonth} 
+                  onChange={(e) => setEditMonth(e.target.value)}
+                  style={{ flex: 2 }}
+                >
+                  {monthsOptions.map(m => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
+                </select>
+                <select 
+                  value={editDay} 
+                  onChange={(e) => setEditDay(e.target.value)}
+                  style={{ flex: 1.5 }}
+                >
+                  <option value="">No Day</option>
+                  {daysOptions.map(d => (
+                    <option key={d} value={d}>{Number(d)}</option>
+                  ))}
+                </select>
+              </div>
             </div>
 
             {editingEvent.eventCategory === 'salary' ? (

@@ -43,16 +43,16 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
   const baselineDate = startDate || "2024-01";
   const [startYear, startMonth] = baselineDate.split('-').map(Number);
 
-  // Helper: Parse date YYYY-MM
-  const parseDate = (dateStr) => {
-    const [y, m] = dateStr.split('-').map(Number);
-    return { year: y, month: m };
-  };
-
-  // Helper: Months since Jan 2024
+  // Helper: Months since start date (supporting day precision)
   const getMonthsSinceStart = (dateStr) => {
-    const { year, month } = parseDate(dateStr);
-    return (year - startYear) * 12 + (month - startMonth);
+    const parts = dateStr.split('-');
+    const year = Number(parts[0]);
+    const month = Number(parts[1]);
+    const day = parts[2] ? Number(parts[2]) : 1;
+    
+    const baseMonths = (year - startYear) * 12 + (month - startMonth);
+    const dayFraction = (day - 1) / 30.4368;
+    return baseMonths + dayFraction;
   };
 
   // Chronologically sort salary events
@@ -321,9 +321,13 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
 
   const formatDateLabel = (dateStr) => {
     if (!dateStr) return '';
-    const [year, month] = dateStr.split('-');
+    const parts = dateStr.split('-');
+    const year = parts[0];
+    const month = parts[1];
+    const day = parts[2];
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    return `${months[Number(month) - 1]} ${year}`;
+    const monthLabel = months[Number(month) - 1] || month;
+    return day ? `${Number(day)} ${monthLabel} ${year}` : `${monthLabel} ${year}`;
   };
 
   // Generate salary step-line path
@@ -966,17 +970,10 @@ function CompanyEarningsList({ salaryEvents, compEvents, startDate, currency, fo
   const currentMonth = today.getMonth() + 1;
   const cutoffDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
 
-  const parseDate = (dateStr) => {
-    const [y, m] = dateStr.split('-').map(Number);
-    return { year: y, month: m - 1 };
-  };
-
   const getYearDiff = (date1, date2) => {
-    const d1 = parseDate(date1);
-    const d2 = parseDate(date2);
-    const months1 = d1.year * 12 + d1.month;
-    const months2 = d2.year * 12 + d2.month;
-    return (months2 - months1) / 12;
+    const d1 = new Date(date1.length === 7 ? `${date1}-01` : date1);
+    const d2 = new Date(date2.length === 7 ? `${date2}-01` : date2);
+    return (d2.getTime() - d1.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
   };
 
   const getCompanyData = () => {
