@@ -1,5 +1,7 @@
 # CompGraph 📈
 
+![CompGraph Dashboard Mockup](./compgraph_mockup.png)
+
 CompGraph is a visually stunning, interactive web dashboard designed to track, visualize, and plan your career compensation milestones starting from any month and year. 
 
 Instead of traditional, rigid chart templates, CompGraph uses a **custom high-fidelity React SVG engine** to map base salary steps and overlay discrete financial payouts directly onto your career timeline.
