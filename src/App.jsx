@@ -389,9 +389,9 @@ export default function App() {
         </aside>
       </div>
 
-      <footer style={{ marginTop: 'auto', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem', textAlign: 'center' }}>
+      <footer style={{ marginTop: 'auto', borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem', paddingBottom: '1.5rem', textAlign: 'center' }}>
         <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-          CompGraph &copy; 2026. Made with high-fidelity React SVGs. Hover nodes to view tooltips.
+          CompGraph &copy; 2026. Created by Pushkal Pandey with love ❤️ • Made with high-fidelity React SVGs.
         </p>
       </footer>
     </div>
