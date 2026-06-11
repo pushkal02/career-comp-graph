@@ -953,6 +953,17 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
           formatFullCurrency={formatFullCurrency}
         />
       )}
+
+      {/* Periodic Earnings Summary Section */}
+      {salaryEvents.length > 0 && (
+        <PeriodicEarningsList
+          salaryEvents={salaryEvents}
+          compEvents={compEvents}
+          startDate={startDate}
+          currency={currency}
+          formatFullCurrency={formatFullCurrency}
+        />
+      )}
     </div>
   );
 }
@@ -1249,6 +1260,289 @@ function CompanyEarningsList({ salaryEvents, compEvents, startDate, currency, fo
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// Periodic Earnings List helper component
+function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, formatFullCurrency }) {
+  const [periodType, setPeriodType] = useState('year'); // 'year', 'half', 'quarter'
+  const baselineDate = startDate || "2024-01";
+  const startYearNum = Number(baselineDate.split('-')[0]);
+
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth() + 1;
+  const cutoffDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+
+  const getYearDiff = (date1, date2) => {
+    const d1 = new Date(date1.length === 7 ? `${date1}-01` : date1);
+    const d2 = new Date(date2.length === 7 ? `${date2}-01` : date2);
+    return (d2.getTime() - d1.getTime()) / (365.25 * 24 * 60 * 60 * 1000);
+  };
+
+  const getOverlapYears = (startA, endA, startB, endB) => {
+    const s = startA > startB ? startA : startB;
+    const e = endA < endB ? endA : endB;
+    if (s >= e) return 0;
+    return getYearDiff(s, e);
+  };
+
+  const sortedSalaryEvents = [...salaryEvents].sort((a, b) => a.date.localeCompare(b.date));
+
+  // Determine the range of years to generate
+  let maxYear = currentYear;
+  [...salaryEvents, ...compEvents].forEach(evt => {
+    const y = Number(evt.date.split('-')[0]);
+    if (y > maxYear) maxYear = y;
+  });
+
+  const years = [];
+  for (let y = startYearNum; y <= maxYear; y++) {
+    years.push(y);
+  }
+
+  // Generate periods
+  const periods = [];
+  years.forEach(y => {
+    if (periodType === 'year') {
+      periods.push({
+        id: `${y}`,
+        label: `${y}`,
+        start: `${y}-01-01`,
+        end: `${y}-12-31`
+      });
+    } else if (periodType === 'half') {
+      periods.push({
+        id: `${y}-H1`,
+        label: `H1 ${y}`,
+        start: `${y}-01-01`,
+        end: `${y}-06-30`
+      });
+      periods.push({
+        id: `${y}-H2`,
+        label: `H2 ${y}`,
+        start: `${y}-07-01`,
+        end: `${y}-12-31`
+      });
+    } else if (periodType === 'quarter') {
+      periods.push({
+        id: `${y}-Q1`,
+        label: `Q1 ${y}`,
+        start: `${y}-01-01`,
+        end: `${y}-03-31`
+      });
+      periods.push({
+        id: `${y}-Q2`,
+        label: `Q2 ${y}`,
+        start: `${y}-04-01`,
+        end: `${y}-06-30`
+      });
+      periods.push({
+        id: `${y}-Q3`,
+        label: `Q3 ${y}`,
+        start: `${y}-07-01`,
+        end: `${y}-09-30`
+      });
+      periods.push({
+        id: `${y}-Q4`,
+        label: `Q4 ${y}`,
+        start: `${y}-10-01`,
+        end: `${y}-12-31`
+      });
+    }
+  });
+
+  // Calculate earnings for each period
+  const periodsData = periods.map(p => {
+    let baseEarned = 0;
+    // Calculate salary contributions
+    if (sortedSalaryEvents.length > 0) {
+      for (let i = 0; i < sortedSalaryEvents.length; i++) {
+        const currentEvent = sortedSalaryEvents[i];
+        const nextEvent = sortedSalaryEvents[i + 1];
+
+        let segmentStart = currentEvent.date;
+        if (segmentStart < baselineDate) segmentStart = baselineDate;
+        
+        let segmentEnd = nextEvent ? nextEvent.date : cutoffDate;
+        if (segmentEnd < baselineDate) segmentEnd = baselineDate;
+
+        // Find overlap between [segmentStart, segmentEnd] and period [p.start, p.end]
+        let actualPeriodEnd = p.end;
+        if (actualPeriodEnd > cutoffDate) actualPeriodEnd = cutoffDate;
+
+        const overlap = getOverlapYears(segmentStart, segmentEnd, p.start, actualPeriodEnd);
+        if (overlap > 0) {
+          baseEarned += convertCurrency(currentEvent.salary, currentEvent.currency, currency) * overlap;
+        }
+      }
+    }
+
+    // Sum comp events falling in this period before cutoff
+    const bonusEarned = compEvents
+      .filter(e => e.type === 'bonus' && e.date >= p.start && e.date <= p.end && e.date < cutoffDate)
+      .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, currency), 0);
+
+    const vestEarned = compEvents
+      .filter(e => e.type === 'vest' && e.date >= p.start && e.date <= p.end && e.date < cutoffDate)
+      .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, currency), 0);
+
+    const totalEarned = baseEarned + bonusEarned + vestEarned;
+
+    return {
+      id: p.id,
+      label: p.label,
+      base: baseEarned,
+      bonus: bonusEarned,
+      vest: vestEarned,
+      total: totalEarned
+    };
+  });
+
+  // Calculate growth percentages
+  for (let i = 0; i < periodsData.length; i++) {
+    const current = periodsData[i];
+    if (i > 0) {
+      const prev = periodsData[i - 1];
+      if (prev.total > 0) {
+        current.growth = ((current.total - prev.total) / prev.total) * 100;
+      } else {
+        current.growth = null;
+      }
+    } else {
+      current.growth = null;
+    }
+  }
+
+  // Filter out future periods where total is 0 to avoid clutter
+  const activePeriods = periodsData.filter((p, idx) => {
+    return p.total > 0 || idx === 0;
+  });
+
+  const maxPeriodTotal = Math.max(...activePeriods.map(p => p.total), 1);
+
+  return (
+    <div className="glass-panel" style={{ marginTop: '2rem', padding: '1.5rem' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
+        <div>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Periodic Earnings Analysis</h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Realized earnings breakdown and growth performance over time</p>
+        </div>
+        
+        {/* Period Selector Tabs */}
+        <div style={{ display: 'flex', gap: '0.35rem', background: 'rgba(255,255,255,0.03)', padding: '0.2rem', borderRadius: '6px' }}>
+          {[
+            { value: 'year', label: 'Yearly' },
+            { value: 'half', label: 'Half-Yearly' },
+            { value: 'quarter', label: 'Quarterly' }
+          ].map(opt => (
+            <button
+              key={opt.value}
+              className="btn"
+              style={{
+                fontSize: '0.75rem',
+                padding: '0.3rem 0.6rem',
+                background: periodType === opt.value ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
+                borderColor: periodType === opt.value ? 'var(--color-primary)' : 'transparent',
+                color: periodType === opt.value ? 'var(--text-primary)' : 'var(--text-muted)'
+              }}
+              onClick={() => setPeriodType(opt.value)}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {activePeriods.map(p => {
+          const basePct = (p.base / maxPeriodTotal) * 100;
+          const bonusPct = (p.bonus / maxPeriodTotal) * 100;
+          const vestPct = (p.vest / maxPeriodTotal) * 100;
+
+          // Growth element styling
+          const isPos = p.growth >= 0;
+          const sign = isPos ? '+' : '';
+          const growthEl = p.growth !== null ? (
+            <span 
+              className={`tooltip-badge ${isPos ? 'bonus' : 'hike'}`} 
+              style={{ 
+                fontSize: '0.75rem', 
+                padding: '0.15rem 0.45rem',
+                color: isPos ? '#10b981' : '#ef4444',
+                background: isPos ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                borderColor: isPos ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'
+              }}
+            >
+              {sign}{p.growth.toFixed(1)}%
+            </span>
+          ) : (
+            <span className="tooltip-badge hike" style={{ fontSize: '0.75rem', padding: '0.15rem 0.45rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' }}>
+              —
+            </span>
+          );
+
+          return (
+            <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{p.label}</span>
+                  {growthEl}
+                </div>
+                <div style={{ fontWeight: 600 }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginRight: '0.35rem' }}>Total:</span>
+                  <span style={{ color: 'var(--color-primary)' }}>{formatFullCurrency(p.total)}</span>
+                </div>
+              </div>
+
+              {/* Progress Stacks */}
+              <div style={{ height: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px', display: 'flex', overflow: 'hidden', width: '100%' }}>
+                {p.base > 0 && (
+                  <div 
+                    style={{ width: `${basePct}%`, background: 'var(--color-base)' }} 
+                    title={`Base: ${formatFullCurrency(p.base)} (${p.total > 0 ? ((p.base / p.total) * 100).toFixed(0) : 0}%)`}
+                  />
+                )}
+                {p.bonus > 0 && (
+                  <div 
+                    style={{ width: `${bonusPct}%`, background: 'var(--color-bonus)' }} 
+                    title={`Bonus: ${formatFullCurrency(p.bonus)} (${p.total > 0 ? ((p.bonus / p.total) * 100).toFixed(0) : 0}%)`}
+                  />
+                )}
+                {p.vest > 0 && (
+                  <div 
+                    style={{ width: `${vestPct}%`, background: 'var(--color-vest)' }} 
+                    title={`Vested: ${formatFullCurrency(p.vest)} (${p.total > 0 ? ((p.vest / p.total) * 100).toFixed(0) : 0}%)`}
+                  />
+                )}
+              </div>
+
+              {/* Detailed breakout text under the bar */}
+              <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.1rem', flexWrap: 'wrap' }}>
+                {p.base > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-base)' }}></span>
+                    <span>Base: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.base)}</strong> ({p.total > 0 ? ((p.base / p.total) * 100).toFixed(0) : 0}%)</span>
+                  </div>
+                )}
+                {p.bonus > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-bonus)' }}></span>
+                    <span>Bonus: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.bonus)}</strong> ({p.total > 0 ? ((p.bonus / p.total) * 100).toFixed(0) : 0}%)</span>
+                  </div>
+                )}
+                {p.vest > 0 && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-vest)' }}></span>
+                    <span>Vested: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.vest)}</strong> ({p.total > 0 ? ((p.vest / p.total) * 100).toFixed(0) : 0}%)</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
