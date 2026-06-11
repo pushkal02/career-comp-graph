@@ -1,0 +1,52 @@
+{
+  "userName": "Pushkal Pandey",
+  "salaryEvents": [
+    {
+      "id": "s_1781119696077_2dnmo",
+      "date": "2024-01",
+      "salary": 360000,
+      "type": "jobswitch",
+      "title": "First Internship"
+    },
+    {
+      "id": "s_1781119771821_1d9ah",
+      "date": "2024-09",
+      "salary": 1021000,
+      "type": "promotion",
+      "title": "IBM - 6G"
+    },
+    {
+      "id": "s_1781119932903_sa9y9",
+      "date": "2025-09",
+      "salary": 1594256,
+      "type": "promotion",
+      "title": "IBM - 6B (Skipped 6A)"
+    },
+    {
+      "id": "s_1781120059777_o7nnc",
+      "date": "2026-07",
+      "salary": 1849336.96,
+      "type": "hike",
+      "title": "Hike - 16%"
+    }
+  ],
+  "compEvents": [
+    {
+      "id": "c_1781119848259_ez8ar",
+      "date": "2025-04",
+      "amount": 36000,
+      "type": "bonus",
+      "title": "GDP+PA"
+    },
+    {
+      "id": "c_1781119976350_ntt03",
+      "date": "2026-04",
+      "amount": 97000,
+      "type": "bonus",
+      "title": "GDP+PA"
+    }
+  ],
+  "startDate": "2024-01",
+  "currency": "INR",
+  "exportDate": "2026-06-10T19:45:58.955Z"
+}

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import CompChart from './components/CompChart';
 import EventForm from './components/EventForm';
 import DashboardStats from './components/DashboardStats';
-import { Sparkles, Sun, Moon } from 'lucide-react';
+import { Sparkles, Sun, Moon, Box } from 'lucide-react';
 
 const getInitialState = () => {
   const savedTheme = localStorage.getItem('comp_graph_theme') || 'dark';
@@ -67,6 +67,7 @@ export default function App() {
   const [startDate, setStartDate] = useState(initialState.startDate);
   const [currency, setCurrency] = useState(initialState.currency);
   const [theme, setTheme] = useState(initialState.theme);
+  const [is3D, setIs3D] = useState(() => localStorage.getItem('comp_graph_3d_mode') === 'true');
 
   // User details state
   const [userName, setUserName] = useState(() => localStorage.getItem('comp_graph_user_name') || '');
@@ -91,6 +92,11 @@ export default function App() {
       localStorage.setItem('comp_graph_theme', theme);
     }
   }, [salaryEvents, compEvents, startDate, currency, theme]);
+
+  // Persist 3D mode preference
+  useEffect(() => {
+    localStorage.setItem('comp_graph_3d_mode', String(is3D));
+  }, [is3D]);
 
   // Apply theme to document body
   useEffect(() => {
@@ -349,6 +355,26 @@ export default function App() {
             </button>
           </div>
 
+          {/* 3D Mode Toggle */}
+          <div className="preset-selector" style={{ minWidth: 'auto' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Chart Mode
+            </span>
+            <button
+              id="toggle-3d-btn"
+              onClick={() => setIs3D(v => !v)}
+              className={`toggle-3d-wrap${is3D ? ' active' : ''}`}
+              title={is3D ? 'Switch to 2D Mode' : 'Switch to 3D Mode'}
+              style={{ marginTop: '0.25rem' }}
+            >
+              <Box size={12} style={{ flexShrink: 0, transition: 'color 0.25s' }} />
+              <span className="toggle-3d-label">{is3D ? '3D' : '2D'}</span>
+              <span className="toggle-3d-track">
+                <span className="toggle-3d-knob" />
+              </span>
+            </button>
+          </div>
+
           <div className="preset-selector" style={{ minWidth: 'auto' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Actions
@@ -386,7 +412,8 @@ export default function App() {
             startDate={startDate} 
             currency={currency} 
             userName={userName}
-            onImportJSON={handleImportJSON} 
+            onImportJSON={handleImportJSON}
+            is3D={is3D}
           />
         </div>
 
