@@ -27,7 +27,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
         // Keep a minimum width of 500px for desktop/tablet, height responsive but bounded
         setDimensions({
           width: Math.max(width, 500),
-          height: 420
+          height: width > 1200 ? 460 : 420
         });
       }
     });
