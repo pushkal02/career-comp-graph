@@ -24,9 +24,10 @@ The application handles two chronological data lists stored in local storage:
 ```typescript
 interface SalaryEvent {
   id: string;        // Prefixed with "s_"
-  date: string;      // Format "YYYY-MM" (e.g., "2024-03")
+  date: string;      // Format "YYYY-MM" or "YYYY-MM-DD"
   salary: number;    // Annual base salary rate (positive/negative/decimals)
   type: "hike" | "promotion" | "jobswitch";
+  currency?: string; // Optional per-event currency code (USD, INR, GBP, EUR, JPY, CAD, AUD, SGD)
   title: string;     // Description label
   company: string;   // Employer context (e.g., "Google", "Freelance", "Self-Employed")
 }
@@ -39,9 +40,10 @@ interface SalaryEvent {
 ```typescript
 interface CompEvent {
   id: string;        // Prefixed with "c_"
-  date: string;      // Format "YYYY-MM" (e.g., "2024-06")
-  amount: number;    // Value in selected currency
+  date: string;      // Format "YYYY-MM" or "YYYY-MM-DD"
+  amount: number;    // Value in event currency
   type: "bonus" | "grant" | "vest"; // Cash bonus, stock grant, vesting event
+  currency?: string; // Optional per-event currency code (USD, INR, GBP, EUR, JPY, CAD, AUD, SGD)
   title: string;     // Description label
   company: string;   // Employer context (e.g., "Google", "Freelance", "Self-Employed")
 }
@@ -67,6 +69,13 @@ If multiple financial events occur in the same month, they are rendered as conce
   $$R_n = \sqrt{R_{n-1}^2 + R_{\text{base}, n}^2}$$
   This maintains linear area scaling across overlapping segments, drawn as a ring of radius $R_{\text{mid}} = \frac{R_n + R_{n-1}}{2}$ and stroke width $W = R_n - R_{n-1}$.
 
+### 3. Currency Conversion (Exchange Rates)
+For multi-currency portfolios, all calculations and chart displays are dynamically converted into the target user-selected default currency using static exchange rates relative to USD:
+- Static conversion table relative to USD:
+  - USD: 1.0, INR: 83.0, GBP: 0.79, EUR: 0.92, JPY: 155.0, CAD: 1.37, AUD: 1.51, SGD: 1.35.
+- Conversion formula:
+  $$\text{Value}_{\text{target}} = \text{Value}_{\text{source}} \times \frac{\text{Rate}_{\text{target}}}{\text{Rate}_{\text{source}}}$$
+
 ---
 
 ## 🇮🇳 Special INR Formatting Rules
@@ -75,7 +84,7 @@ Shorthand amounts inside graphs and axes are formatted to align with Indian numb
 - **Lakhs Range** (Values $\ge$ ₹1,000 and < ₹1 Crore): Represented in thousands (`k`) using Indian grouping commas.
   - *Example*: `₹18,49,000` is formatted as `₹18,49k`.
 - **Crores Range** (Values $\ge$ ₹1 Crore): Represented in Lakhs (`L`) using Indian grouping commas.
-  - *Example*: `₹1,52,00,000` (1.52 Cr) is formatted as `₹1,52L`.
+  - *Example*: `₹1,52,0,000` (1.52 Cr) is formatted as `₹1,52L`.
 - **Implementation Method**: Values are rounded to the nearest thousand (for `k`) or Lakh (for `L`), formatted with `Intl.NumberFormat('en-IN')`, and then sliced to remove trailing digits (slicing off the last 4 characters `",000"` for thousands, or last 7 characters `",00,000"` for Lakhs).
 
 ---
