@@ -1,5 +1,6 @@
 
 import { DollarSign, Award, Percent, Layers, ShieldCheck } from 'lucide-react';
+import { convertCurrency } from '../utils/currency';
 
 export default function DashboardStats({ salaryEvents, compEvents, startDate, currency }) {
   const baselineDate = startDate || "2024-01";
@@ -42,7 +43,7 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
   // 1. Calculate current salary (most recent salary event)
   const sortedSalaryEvents = [...salaryEvents].sort((a, b) => a.date.localeCompare(b.date));
   const currentSalary = sortedSalaryEvents.length > 0 
-    ? sortedSalaryEvents[sortedSalaryEvents.length - 1].salary 
+    ? convertCurrency(sortedSalaryEvents[sortedSalaryEvents.length - 1].salary, sortedSalaryEvents[sortedSalaryEvents.length - 1].currency, currency) 
     : 0;
 
   // Get cutoff date representing the start of the current month (i.e. end of the last completed month)
@@ -68,7 +69,8 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
       
       const durationYears = getYearDiff(segmentStart, segmentEnd);
       if (durationYears > 0) {
-        cumulativeBaseEarned += currentEvent.salary * durationYears;
+        const segmentSalaryInDisplay = convertCurrency(currentEvent.salary, currentEvent.currency, currency);
+        cumulativeBaseEarned += segmentSalaryInDisplay * durationYears;
       }
     }
   }
@@ -76,15 +78,15 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
   // 3. Sum of bonus, grant, and vest (realized options filtered up to the last completed month)
   const totalBonus = compEvents
     .filter(e => e.type === 'bonus' && e.date < cutoffDate)
-    .reduce((sum, e) => sum + Number(e.amount), 0);
+    .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, currency), 0);
 
   const totalGrant = compEvents
     .filter(e => e.type === 'grant')
-    .reduce((sum, e) => sum + Number(e.amount), 0);
+    .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, currency), 0);
 
   const totalVest = compEvents
     .filter(e => e.type === 'vest' && e.date < cutoffDate)
-    .reduce((sum, e) => sum + Number(e.amount), 0);
+    .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, currency), 0);
 
   // 4. Realized Cumulative Compensation = Base Salary Earned + Bonus + Vests
   const totalRealizedComp = cumulativeBaseEarned + totalBonus + totalVest;

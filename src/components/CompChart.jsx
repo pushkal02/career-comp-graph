@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Download, FileSpreadsheet, Upload } from 'lucide-react';
+import { convertCurrency } from '../utils/currency';
 
 export default function CompChart({ salaryEvents, compEvents, startDate, currency, userName, onImportJSON }) {
   const containerRef = useRef(null);
@@ -72,13 +73,13 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
   const endYear = startYear + Math.floor(totalMonths / 12);
 
   // Maximum and Minimum salary for Y scale
-  const salaries = salaryEvents.map(e => e.salary);
+  const salaries = salaryEvents.map(e => convertCurrency(e.salary, e.currency, currency));
   const maxSalary = salaries.length > 0 ? Math.max(...salaries) : 100000;
   const maxY = Math.ceil((maxSalary * 1.15) / 10000) * 10000; // Pad 15% and round to nearest $10k
   const minY = 0;
 
   // Maximum compensation event amount for circle sizing
-  const compAmounts = compEvents.map(e => e.amount);
+  const compAmounts = compEvents.map(e => convertCurrency(e.amount, e.currency, currency));
   const maxCompAmount = compAmounts.length > 0 ? Math.max(...compAmounts) : 10000;
 
   // Export functions
@@ -222,17 +223,16 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
   // Helper to find base salary at any given date string YYYY-MM
   const getSalaryAtDate = (dateStr) => {
     if (sortedSalaryEvents.length === 0) return 0;
-    
     // Find last salary event on or before this date
     let activeSalary = sortedSalaryEvents[0].salary;
+    let activeCurrency = sortedSalaryEvents[0].currency;
     for (let i = 0; i < sortedSalaryEvents.length; i++) {
       if (sortedSalaryEvents[i].date <= dateStr) {
         activeSalary = sortedSalaryEvents[i].salary;
-      } else {
-        break;
+        activeCurrency = sortedSalaryEvents[i].currency;
       }
     }
-    return activeSalary;
+    return convertCurrency(activeSalary, activeCurrency, currency);
   };
 
   // Calculate circle radius based on amount (Area proportional to amount)
@@ -269,9 +269,10 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
   };
 
   // Short currency formatter (e.g. $15k or ₹18,49k / ₹1,52L)
-  const formatShortCurrency = (val) => {
-    const symbol = getCurrencySymbol(currency || 'USD');
-    const isINR = (currency || 'USD') === 'INR';
+  const formatShortCurrency = (val, eventCurrency) => {
+    const activeCurrency = eventCurrency || currency || 'USD';
+    const symbol = getCurrencySymbol(activeCurrency);
+    const isINR = activeCurrency === 'INR';
     const isNegative = val < 0;
     const absVal = Math.abs(val);
     
@@ -308,8 +309,8 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
     }
   };
 
-  const formatFullCurrency = (val) => {
-    const activeCurrency = currency || 'USD';
+  const formatFullCurrency = (val, eventCurrency) => {
+    const activeCurrency = eventCurrency || currency || 'USD';
     const locale = getLocaleForCurrency(activeCurrency);
     return new Intl.NumberFormat(locale, {
       style: 'currency',
@@ -332,7 +333,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
   
   if (sortedSalaryEvents.length > 0) {
     const startX = padding.left;
-    const startY = getY(sortedSalaryEvents[0].salary);
+    const startY = getY(convertCurrency(sortedSalaryEvents[0].salary, sortedSalaryEvents[0].currency, currency));
     const bottomY = dimensions.height - padding.bottom;
     const endX = dimensions.width - padding.right;
     
@@ -344,7 +345,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
     for (let i = 1; i < sortedSalaryEvents.length; i++) {
       const event = sortedSalaryEvents[i];
       const eventX = getX(event.date);
-      const eventY = getY(event.salary);
+      const eventY = getY(convertCurrency(event.salary, event.currency, currency));
       
       // Step horizontal, then vertical
       salaryPathD += ` L ${eventX} ${lastY} L ${eventX} ${eventY}`;
@@ -364,13 +365,13 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
       
       const segmentStartX = i === 0 ? startX : getX(currentEvent.date);
       const segmentEndX = i === sortedSalaryEvents.length - 1 ? endX : getX(nextEvent.date);
-      const segmentY = getY(currentEvent.salary);
+      const segmentY = getY(convertCurrency(currentEvent.salary, currentEvent.currency, currency));
       
       salarySegments.push({
         startX: segmentStartX,
         endX: segmentEndX,
         y: segmentY,
-        salary: currentEvent.salary,
+        salary: convertCurrency(currentEvent.salary, currentEvent.currency, currency),
         id: currentEvent.id
       });
     }
@@ -650,36 +651,37 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
               if (!filters[evt.type]) return null;
               
               const x = getX(evt.date);
-              const y = getY(evt.salary);
+              const y = getY(convertCurrency(evt.salary, evt.currency, currency));
               
               let color = 'var(--color-hike)';
               if (evt.type === 'promotion') color = 'var(--color-promotion)';
               if (evt.type === 'jobswitch') color = 'var(--color-switch)';
-
+ 
               return (
                 <g 
-                  key={`salary-evt-${evt.id}`}
-                  className="chart-event-node"
-                  style={{ '--node-color': color }}
-                  transform={`translate(${x}, ${y})`}
-                  onMouseEnter={() => {
-                    // Percentage change calculation
-                    const prevSalary = sortedSalaryEvents[idx - 1].salary;
-                    const pctDiff = ((evt.salary - prevSalary) / prevSalary) * 100;
-                    
-                    setHoveredItem({
-                      x: x,
-                      y: y - 10,
-                      title: evt.title,
-                      value: `${formatFullCurrency(evt.salary)}/yr`,
-                      subValue: `+${pctDiff.toFixed(0)}% change`,
-                      date: formatDateLabel(evt.date),
-                      type: evt.type,
-                      company: evt.company || 'Self-Employed',
-                      category: 'salary'
-                    });
-                  }}
-                  onMouseLeave={() => setHoveredItem(null)}
+                   key={`salary-evt-${evt.id}`}
+                   className="chart-event-node"
+                   style={{ '--node-color': color }}
+                   transform={`translate(${x}, ${y})`}
+                   onMouseEnter={() => {
+                     // Percentage change calculation
+                     const prevSalary = convertCurrency(sortedSalaryEvents[idx - 1].salary, sortedSalaryEvents[idx - 1].currency, currency);
+                     const currSalary = convertCurrency(evt.salary, evt.currency, currency);
+                     const pctDiff = prevSalary !== 0 ? ((currSalary - prevSalary) / prevSalary) * 100 : 0;
+                     
+                     setHoveredItem({
+                       x: x,
+                       y: y - 10,
+                       title: evt.title,
+                       value: `${formatFullCurrency(currSalary)}/yr`,
+                       subValue: pctDiff > 0 ? `+${pctDiff.toFixed(0)}% change` : `${pctDiff.toFixed(0)}% change`,
+                       date: formatDateLabel(evt.date),
+                       type: evt.type,
+                       company: evt.company || 'Self-Employed',
+                       category: 'salary'
+                     });
+                   }}
+                   onMouseLeave={() => setHoveredItem(null)}
                 >
                   {/* Glowing background */}
                   <rect 
@@ -721,15 +723,19 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
                 }
                 compGroupsByDate[evt.date].push(evt);
               });
-
+ 
               return Object.entries(compGroupsByDate).map(([date, group]) => {
                 const x = getX(date);
                 const activeSalary = getSalaryAtDate(date);
                 const y = getY(activeSalary);
-
-                // Sort events in this group by amount descending (largest first)
-                const sortedGroup = [...group].sort((a, b) => b.amount - a.amount);
-
+ 
+                // Sort events in this group by active display currency amount descending (largest first)
+                const sortedGroup = [...group].sort((a, b) => {
+                  const valA = convertCurrency(a.amount, a.currency, currency);
+                  const valB = convertCurrency(b.amount, b.currency, currency);
+                  return valB - valA;
+                });
+ 
                 // Calculate radii:
                 // Smallest event (innermost) has Area proportional to its amount.
                 // Each larger event (outer rings) has its Ring Area equal to its amount.
@@ -739,7 +745,8 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
                 let prevRadius = 0;
                 for (let i = sortedGroup.length - 1; i >= 0; i--) {
                   const evt = sortedGroup[i];
-                  const baseRadius = getCircleRadius(evt.amount);
+                  const convertedAmt = convertCurrency(evt.amount, evt.currency, currency);
+                  const baseRadius = getCircleRadius(convertedAmt);
                   
                   let radius;
                   if (i === sortedGroup.length - 1) {
@@ -755,7 +762,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
                   groupWithRadii.unshift({ evt, radius });
                   prevRadius = radius;
                 }
-
+ 
                 return (
                   <g key={`comp-group-${date}`}>
                     {groupWithRadii.map(({ evt, radius }, idx) => {
@@ -769,9 +776,9 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
                         fillColor = 'rgba(168, 85, 247, 0.22)';
                         strokeColor = 'var(--color-vest)';
                       }
-
+ 
                       const isInnermost = idx === groupWithRadii.length - 1;
-
+ 
                       if (isInnermost) {
                         // Innermost circle (standard filled circle)
                         return (
@@ -785,7 +792,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
                                 x: x,
                                 y: y - radius - 10,
                                 title: evt.title,
-                                value: formatFullCurrency(evt.amount),
+                                value: formatFullCurrency(evt.amount, evt.currency),
                                 date: formatDateLabel(evt.date),
                                 type: evt.type,
                                 company: evt.company || 'Self-Employed',
@@ -825,7 +832,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
                               fontFamily="var(--font-mono)"
                               pointerEvents="none"
                             >
-                              {formatShortCurrency(evt.amount)}
+                              {formatShortCurrency(evt.amount, evt.currency)}
                             </text>
                           </g>
                         );
@@ -834,7 +841,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
                         const nextRadius = groupWithRadii[idx + 1].radius;
                         const strokeWidth = radius - nextRadius;
                         const ringRadius = (radius + nextRadius) / 2;
-
+ 
                         return (
                           <g
                             key={`comp-evt-${evt.id}`}
@@ -846,7 +853,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
                                 x: x,
                                 y: y - radius - 10,
                                 title: evt.title,
-                                value: formatFullCurrency(evt.amount),
+                                value: formatFullCurrency(evt.amount, evt.currency),
                                 date: formatDateLabel(evt.date),
                                 type: evt.type,
                                 company: evt.company || 'Self-Employed',
@@ -885,7 +892,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
                               fontFamily="var(--font-mono)"
                               pointerEvents="none"
                             >
-                              {formatShortCurrency(evt.amount)}
+                              {formatShortCurrency(evt.amount, evt.currency)}
                             </text>
                           </g>
                         );
@@ -938,6 +945,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
           salaryEvents={salaryEvents}
           compEvents={compEvents}
           startDate={startDate}
+          currency={currency}
           formatFullCurrency={formatFullCurrency}
         />
       )}
@@ -946,7 +954,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
 }
 
 // Company Earnings List helper component
-function CompanyEarningsList({ salaryEvents, compEvents, startDate, formatFullCurrency }) {
+function CompanyEarningsList({ salaryEvents, compEvents, startDate, currency, formatFullCurrency }) {
   const [sortBy, setSortBy] = useState('amount'); // 'amount' or 'time'
   const [sortOrder, setSortOrder] = useState('desc'); // 'desc' or 'asc'
 
@@ -990,7 +998,7 @@ function CompanyEarningsList({ salaryEvents, compEvents, startDate, formatFullCu
         
         const durationYears = getYearDiff(segmentStart, segmentEnd);
         if (durationYears > 0) {
-          const earned = currentEvent.salary * durationYears;
+          const earned = convertCurrency(currentEvent.salary, currentEvent.currency, currency) * durationYears;
           const companyName = currentEvent.company || 'Self-Employed';
           
           if (!data[companyName]) {
@@ -1014,7 +1022,7 @@ function CompanyEarningsList({ salaryEvents, compEvents, startDate, formatFullCu
         data[companyName] = { name: companyName, base: 0, bonus: 0, vest: 0, total: 0, earliestDate: evt.date, latestDate: evt.date };
       }
 
-      const val = Number(evt.amount);
+      const val = convertCurrency(Number(evt.amount), evt.currency, currency);
       if (evt.type === 'bonus') {
         data[companyName].bonus += val;
         data[companyName].total += val;

@@ -20,6 +20,7 @@ export default function EventForm({
   const [salaryDate, setSalaryDate] = useState(startDate || '2024-01');
   const [salaryVal, setSalaryVal] = useState('100000');
   const [salaryType, setSalaryType] = useState('hike'); // hike, promotion, jobswitch
+  const [salaryCurrency, setSalaryCurrency] = useState(currency || 'USD');
   const [salaryTitle, setSalaryTitle] = useState('');
   const [salaryWorkType, setSalaryWorkType] = useState('Company'); // Company, Freelance, Self-Employed
   const [salaryCompany, setSalaryCompany] = useState('');
@@ -28,6 +29,7 @@ export default function EventForm({
   const [compDate, setCompDate] = useState(startDate || '2024-01');
   const [compAmount, setCompAmount] = useState('10000');
   const [compType, setCompType] = useState('bonus'); // bonus, grant, vest
+  const [compCurrency, setCompCurrency] = useState(currency || 'USD');
   const [compTitle, setCompTitle] = useState('');
   const [compWorkType, setCompWorkType] = useState('Company'); // Company, Freelance, Self-Employed
   const [compCompany, setCompCompany] = useState('');
@@ -37,6 +39,7 @@ export default function EventForm({
   const [editDate, setEditDate] = useState('');
   const [editVal, setEditVal] = useState('');
   const [editType, setEditType] = useState('');
+  const [editCurrency, setEditCurrency] = useState('USD');
   const [editTitle, setEditTitle] = useState('');
   const [editWorkType, setEditWorkType] = useState('Company');
   const [editCompany, setEditCompany] = useState('');
@@ -49,6 +52,17 @@ export default function EventForm({
     setCompDate(startDate || '2024-01');
   }
 
+  // Sync default currency changes
+  const [prevDefaultCurrency, setPrevDefaultCurrency] = useState(currency);
+  if (currency !== prevDefaultCurrency) {
+    setPrevDefaultCurrency(currency);
+    setSalaryCurrency(currency || 'USD');
+    setCompCurrency(currency || 'USD');
+    if (editingEvent && !editingEvent.currency) {
+      setEditCurrency(currency || 'USD');
+    }
+  }
+
   const handleSalarySubmit = (e) => {
     e.preventDefault();
     if (!salaryDate || !salaryVal || Number(salaryVal) === 0) return;
@@ -57,6 +71,7 @@ export default function EventForm({
       date: salaryDate,
       salary: Number(salaryVal),
       type: salaryType,
+      currency: salaryCurrency,
       title: salaryTitle.trim() || getDefaultSalaryTitle(salaryType),
       company: salaryWorkType === 'Company' ? salaryCompany.trim() || 'Self-Employed' : salaryWorkType
     });
@@ -74,6 +89,7 @@ export default function EventForm({
       date: compDate,
       amount: Number(compAmount),
       type: compType,
+      currency: compCurrency,
       title: compTitle.trim() || getDefaultCompTitle(compType),
       company: compWorkType === 'Company' ? compCompany.trim() || 'Self-Employed' : compWorkType
     });
@@ -89,6 +105,7 @@ export default function EventForm({
     const valStr = item.eventCategory === 'salary' ? item.salary.toString() : item.amount.toString();
     setEditVal(valStr);
     setEditType(item.type);
+    setEditCurrency(item.currency || currency || 'USD');
     setEditTitle(item.title || '');
 
     const itemCompany = item.company || 'Self-Employed';
@@ -115,6 +132,7 @@ export default function EventForm({
         date: editDate,
         salary: Number(editVal),
         type: editType,
+        currency: editCurrency,
         title: editTitle.trim() || getDefaultSalaryTitle(editType),
         company: finalCompany
       });
@@ -124,6 +142,7 @@ export default function EventForm({
         date: editDate,
         amount: Number(editVal),
         type: editType,
+        currency: editCurrency,
         title: editTitle.trim() || getDefaultCompTitle(editType),
         company: finalCompany
       });
@@ -167,8 +186,8 @@ export default function EventForm({
     }
   };
 
-  const formatCurrency = (val) => {
-    const activeCurrency = currency || 'USD';
+  const formatCurrency = (val, eventCurrency) => {
+    const activeCurrency = eventCurrency || currency || 'USD';
     const getLocaleForCurrency = (curr) => {
       switch (curr) {
         case 'INR': return 'en-IN';
@@ -280,20 +299,35 @@ export default function EventForm({
                 </select>
               </div>
 
-              <div className="form-group">
-                <label>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.25)', color: 'var(--color-primary)', fontSize: '9px', fontWeight: '800', marginRight: '6px', fontFamily: 'var(--font-mono)', verticalAlign: 'middle', lineHeight: 1 }}>
-                    {getCurrencySymbol(currency || 'USD').trim()}
-                  </span>
-                  New Annual Base Salary ({getCurrencySymbol(currency || 'USD')})
-                </label>
-                <input 
-                  type="number" 
-                  step="any"
-                  value={salaryVal}
-                  onChange={(e) => setSalaryVal(e.target.value)}
-                  required
-                />
+              <div className="form-group" style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ flex: 1 }}>
+                  <label>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.25)', color: 'var(--color-primary)', fontSize: '9px', fontWeight: '800', marginRight: '6px', fontFamily: 'var(--font-mono)', verticalAlign: 'middle', lineHeight: 1 }}>
+                      {getCurrencySymbol(salaryCurrency).trim()}
+                    </span>
+                    New Annual Base Salary ({getCurrencySymbol(salaryCurrency).trim()})
+                  </label>
+                  <input 
+                    type="number" 
+                    step="any"
+                    value={salaryVal}
+                    onChange={(e) => setSalaryVal(e.target.value)}
+                    required
+                  />
+                </div>
+                <div style={{ width: '95px' }}>
+                  <label>Currency</label>
+                  <select value={salaryCurrency} onChange={(e) => setSalaryCurrency(e.target.value)} style={{ height: '37px' }}>
+                    <option value="USD">USD ($)</option>
+                    <option value="INR">INR (₹)</option>
+                    <option value="GBP">GBP (£)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="JPY">JPY (¥)</option>
+                    <option value="CAD">CAD (CA$)</option>
+                    <option value="AUD">AUD (A$)</option>
+                    <option value="SGD">SGD (SG$)</option>
+                  </select>
+                </div>
               </div>
 
               <div className="form-group">
@@ -369,20 +403,35 @@ export default function EventForm({
                 </select>
               </div>
 
-              <div className="form-group">
-                <label>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.25)', color: 'var(--color-primary)', fontSize: '9px', fontWeight: '800', marginRight: '6px', fontFamily: 'var(--font-mono)', verticalAlign: 'middle', lineHeight: 1 }}>
-                    {getCurrencySymbol(currency || 'USD').trim()}
-                  </span>
-                  Event Value / Amount ({getCurrencySymbol(currency || 'USD')})
-                </label>
-                <input 
-                  type="number" 
-                  step="any"
-                  value={compAmount}
-                  onChange={(e) => setCompAmount(e.target.value)}
-                  required
-                />
+              <div className="form-group" style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ flex: 1 }}>
+                  <label>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.25)', color: 'var(--color-primary)', fontSize: '9px', fontWeight: '800', marginRight: '6px', fontFamily: 'var(--font-mono)', verticalAlign: 'middle', lineHeight: 1 }}>
+                      {getCurrencySymbol(compCurrency).trim()}
+                    </span>
+                    Event Value / Amount ({getCurrencySymbol(compCurrency).trim()})
+                  </label>
+                  <input 
+                    type="number" 
+                    step="any"
+                    value={compAmount}
+                    onChange={(e) => setCompAmount(e.target.value)}
+                    required
+                  />
+                </div>
+                <div style={{ width: '95px' }}>
+                  <label>Currency</label>
+                  <select value={compCurrency} onChange={(e) => setCompCurrency(e.target.value)} style={{ height: '37px' }}>
+                    <option value="USD">USD ($)</option>
+                    <option value="INR">INR (₹)</option>
+                    <option value="GBP">GBP (£)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="JPY">JPY (¥)</option>
+                    <option value="CAD">CAD (CA$)</option>
+                    <option value="AUD">AUD (A$)</option>
+                    <option value="SGD">SGD (SG$)</option>
+                  </select>
+                </div>
               </div>
 
               <div className="form-group">
@@ -479,20 +528,35 @@ export default function EventForm({
               </div>
             )}
 
-            <div className="form-group">
-              <label>
-                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.25)', color: 'var(--color-primary)', fontSize: '9px', fontWeight: '800', marginRight: '6px', fontFamily: 'var(--font-mono)', verticalAlign: 'middle', lineHeight: 1 }}>
-                  {getCurrencySymbol(currency || 'USD').trim()}
-                </span>
-                {editingEvent.eventCategory === 'salary' ? 'Annual Base Salary' : 'Amount / Value'} ({getCurrencySymbol(currency || 'USD')})
-              </label>
-              <input 
-                type="number" 
-                step="any"
-                value={editVal}
-                onChange={(e) => setEditVal(e.target.value)}
-                required
-              />
+            <div className="form-group" style={{ display: 'flex', gap: '0.5rem' }}>
+              <div style={{ flex: 1 }}>
+                <label>
+                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.25)', color: 'var(--color-primary)', fontSize: '9px', fontWeight: '800', marginRight: '6px', fontFamily: 'var(--font-mono)', verticalAlign: 'middle', lineHeight: 1 }}>
+                    {getCurrencySymbol(editCurrency).trim()}
+                  </span>
+                  {editingEvent.eventCategory === 'salary' ? 'Annual Base Salary' : 'Amount / Value'} ({getCurrencySymbol(editCurrency).trim()})
+                </label>
+                <input 
+                  type="number" 
+                  step="any"
+                  value={editVal}
+                  onChange={(e) => setEditVal(e.target.value)}
+                  required
+                />
+              </div>
+              <div style={{ width: '95px' }}>
+                <label>Currency</label>
+                <select value={editCurrency} onChange={(e) => setEditCurrency(e.target.value)} style={{ height: '37px' }}>
+                  <option value="USD">USD ($)</option>
+                  <option value="INR">INR (₹)</option>
+                  <option value="GBP">GBP (£)</option>
+                  <option value="EUR">EUR (€)</option>
+                  <option value="JPY">JPY (¥)</option>
+                  <option value="CAD">CAD (CA$)</option>
+                  <option value="AUD">AUD (A$)</option>
+                  <option value="SGD">SGD (SG$)</option>
+                </select>
+              </div>
             </div>
 
             <div className="form-group">
@@ -585,8 +649,8 @@ export default function EventForm({
                         {item.title}
                       </span>
                     </div>
-                    <div className="manager-item-meta" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${formatDateLabel(item.date)} • ${isSalary ? 'Salary' : 'Amount'}: ${formatCurrency(isSalary ? item.salary : item.amount)}${isSalary ? '/yr' : ''} • Employer: ${companyTag}`}>
-                      {formatDateLabel(item.date)} • <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatCurrency(isSalary ? item.salary : item.amount)}</span>
+                    <div className="manager-item-meta" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${formatDateLabel(item.date)} • ${isSalary ? 'Salary' : 'Amount'}: ${formatCurrency(isSalary ? item.salary : item.amount, item.currency)}${isSalary ? '/yr' : ''} • Employer: ${companyTag}`}>
+                      {formatDateLabel(item.date)} • <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatCurrency(isSalary ? item.salary : item.amount, item.currency)}</span>
                       {isSalary && ' / yr'} • <strong style={{ color: 'var(--color-primary)' }}>{companyTag}</strong>
                     </div>
                   </div>
