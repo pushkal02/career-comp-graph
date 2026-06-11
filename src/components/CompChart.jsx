@@ -1289,6 +1289,10 @@ function CompanyEarningsList({ salaryEvents, compEvents, startDate, currency, fo
 // Periodic Earnings List helper component
 function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, formatFullCurrency }) {
   const [periodType, setPeriodType] = useState('year'); // 'year', 'half', 'quarter'
+  const [viewMode, setViewMode] = useState('chart'); // 'chart' or 'list'
+  const [hoveredBar, setHoveredBar] = useState(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+
   const baselineDate = startDate || "2024-01";
   const startYearNum = Number(baselineDate.split('-')[0]);
 
@@ -1465,127 +1469,525 @@ function PeriodicEarningsList({ salaryEvents, compEvents, startDate, currency, f
 
   const maxPeriodTotal = Math.max(...activePeriods.map(p => p.total), 1);
 
+  // Compute Growth Chart scaling bounds
+  const growthValues = activePeriods
+    .map(p => p.growth)
+    .filter(g => g !== null && g !== undefined);
+
+  let minGrowth = 0;
+  let maxGrowth = 100;
+
+  if (growthValues.length > 0) {
+    const rawMin = Math.min(...growthValues);
+    const rawMax = Math.max(...growthValues);
+    minGrowth = Math.min(rawMin, 0);
+    maxGrowth = Math.max(rawMax, 10);
+  }
+
+  // Ensure there is always negative space on the chart to show potential negative growth
+  if (minGrowth >= 0) {
+    minGrowth = -Math.max(20, maxGrowth * 0.25);
+  }
+
+  const growthRange = maxGrowth - minGrowth;
+  const paddingPct = growthRange * 0.15 || 10;
+  const scaleMin = minGrowth - paddingPct;
+  const scaleMax = maxGrowth + paddingPct;
+
+  const chartPadding = { top: 25, right: 20, bottom: 35, left: 60 };
+  const chartHeight = 240 - chartPadding.top - chartPadding.bottom;
+  const chartWidth = 680 - chartPadding.left - chartPadding.right;
+
+  const getGrowthY = (val) => {
+    if (val === null || val === undefined) return chartPadding.top + chartHeight;
+    const pct = (val - scaleMin) / (scaleMax - scaleMin);
+    return chartPadding.top + chartHeight - pct * chartHeight;
+  };
+
+  const zeroY = getGrowthY(0);
+
+  // Generate 5 evenly spaced Y ticks
+  const yTicksCount = 5;
+  const yTicks = [];
+  for (let i = 0; i < yTicksCount; i++) {
+    const val = scaleMin + (i * (scaleMax - scaleMin)) / (yTicksCount - 1);
+    yTicks.push(val);
+  }
+
+  const numPeriods = activePeriods.length;
+  const barGroupWidth = numPeriods > 0 ? chartWidth / numPeriods : chartWidth;
+  const barWidth = Math.min(32, barGroupWidth * 0.45);
+
   return (
-    <div className="glass-panel" style={{ marginTop: '2rem', padding: '1.5rem' }}>
+    <div className="glass-panel" style={{ marginTop: '2rem', padding: '1.5rem', position: 'relative' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.75rem' }}>
         <div>
           <h3 style={{ fontSize: '1.1rem', fontWeight: '700' }}>Periodic Earnings Analysis</h3>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem' }}>Realized earnings breakdown and growth performance (current period shows projected earnings)</p>
         </div>
         
-        {/* Period Selector Tabs */}
-        <div style={{ display: 'flex', gap: '0.35rem', background: 'rgba(255,255,255,0.03)', padding: '0.2rem', borderRadius: '6px' }}>
-          {[
-            { value: 'year', label: 'Yearly' },
-            { value: 'half', label: 'Half-Yearly' },
-            { value: 'quarter', label: 'Quarterly' }
-          ].map(opt => (
-            <button
-              key={opt.value}
-              className="btn"
-              style={{
-                fontSize: '0.75rem',
-                padding: '0.3rem 0.6rem',
-                background: periodType === opt.value ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
-                borderColor: periodType === opt.value ? 'var(--color-primary)' : 'transparent',
-                color: periodType === opt.value ? 'var(--text-primary)' : 'var(--text-muted)'
-              }}
-              onClick={() => setPeriodType(opt.value)}
-            >
-              {opt.label}
-            </button>
-          ))}
+        {/* Toggle selectors (View Mode & Period Type) */}
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* View Mode Tabs */}
+          <div style={{ display: 'flex', gap: '0.35rem', background: 'rgba(255,255,255,0.03)', padding: '0.2rem', borderRadius: '6px' }}>
+            {[
+              { value: 'chart', label: '📊 Growth Chart' },
+              { value: 'list', label: '📋 Detailed List' }
+            ].map(opt => (
+              <button
+                key={opt.value}
+                className="btn"
+                style={{
+                  fontSize: '0.75rem',
+                  padding: '0.3rem 0.6rem',
+                  background: viewMode === opt.value ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
+                  borderColor: viewMode === opt.value ? 'var(--color-primary)' : 'transparent',
+                  color: viewMode === opt.value ? 'var(--text-primary)' : 'var(--text-muted)'
+                }}
+                onClick={() => setViewMode(opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Period Selector Tabs */}
+          <div style={{ display: 'flex', gap: '0.35rem', background: 'rgba(255,255,255,0.03)', padding: '0.2rem', borderRadius: '6px' }}>
+            {[
+              { value: 'year', label: 'Yearly' },
+              { value: 'half', label: 'Half-Yearly' },
+              { value: 'quarter', label: 'Quarterly' }
+            ].map(opt => (
+              <button
+                key={opt.value}
+                className="btn"
+                style={{
+                  fontSize: '0.75rem',
+                  padding: '0.3rem 0.6rem',
+                  background: periodType === opt.value ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
+                  borderColor: periodType === opt.value ? 'var(--color-primary)' : 'transparent',
+                  color: periodType === opt.value ? 'var(--text-primary)' : 'var(--text-muted)'
+                }}
+                onClick={() => setPeriodType(opt.value)}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {activePeriods.map(p => {
-          const basePct = (p.base / maxPeriodTotal) * 100;
-          const bonusPct = (p.bonus / maxPeriodTotal) * 100;
-          const vestPct = (p.vest / maxPeriodTotal) * 100;
+      {viewMode === 'chart' ? (
+        <div style={{ position: 'relative', width: '100%', marginTop: '0.5rem' }}>
+          <svg viewBox="0 0 680 240" width="100%" style={{ overflow: 'visible', display: 'block' }}>
+            {/* Horizontal grid lines */}
+            {yTicks.map((tickVal, idx) => {
+              const y = getGrowthY(tickVal);
+              return (
+                <g key={idx}>
+                  <line
+                    x1={chartPadding.left}
+                    y1={y}
+                    x2={680 - chartPadding.right}
+                    y2={y}
+                    stroke="rgba(255, 255, 255, 0.05)"
+                    strokeDasharray="4 4"
+                  />
+                  <text
+                    x={chartPadding.left - 10}
+                    y={y + 4}
+                    textAnchor="end"
+                    fill="var(--text-muted)"
+                    fontSize="10px"
+                    fontFamily="var(--font-mono)"
+                  >
+                    {tickVal === 0 ? '0%' : `${tickVal > 0 ? '+' : ''}${tickVal.toFixed(0)}%`}
+                  </text>
+                </g>
+              );
+            })}
 
-          // Growth element styling
-          const isPos = p.growth >= 0;
-          const sign = isPos ? '+' : '';
-          const growthEl = p.growth !== null ? (
-            <span 
-              className={`tooltip-badge ${isPos ? 'bonus' : 'hike'}`} 
-              style={{ 
-                fontSize: '0.75rem', 
-                padding: '0.15rem 0.45rem',
-                color: isPos ? '#10b981' : '#ef4444',
-                background: isPos ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-                borderColor: isPos ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'
-              }}
-            >
-              {sign}{p.growth.toFixed(1)}%
-            </span>
-          ) : (
-            <span className="tooltip-badge hike" style={{ fontSize: '0.75rem', padding: '0.15rem 0.45rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' }}>
-              —
-            </span>
-          );
+            {/* Zero line */}
+            <line
+              x1={chartPadding.left}
+              y1={zeroY}
+              x2={680 - chartPadding.right}
+              y2={zeroY}
+              stroke="rgba(255, 255, 255, 0.2)"
+              strokeWidth="1.5"
+            />
 
-          return (
-            <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{p.label}</span>
-                  {growthEl}
+            {/* Render Bars and Labels */}
+            {activePeriods.map((p, i) => {
+              const colCenterX = chartPadding.left + barGroupWidth * i + barGroupWidth / 2;
+              const barX = colCenterX - barWidth / 2;
+
+              if (p.growth === null || p.growth === undefined) {
+                // Baseline representation (START)
+                return (
+                  <g key={p.id}>
+                    <rect
+                      x={barX}
+                      y={zeroY - 12}
+                      width={barWidth}
+                      height={24}
+                      fill="rgba(99, 102, 241, 0.05)"
+                      stroke="rgba(99, 102, 241, 0.25)"
+                      strokeDasharray="2 2"
+                      rx={3}
+                    />
+                    <text
+                      x={colCenterX}
+                      y={zeroY + 3}
+                      textAnchor="middle"
+                      fill="var(--text-muted)"
+                      fontSize="8px"
+                      fontWeight="700"
+                      letterSpacing="0.05em"
+                    >
+                      START
+                    </text>
+                    
+                    {/* X-axis label */}
+                    <text
+                      x={colCenterX}
+                      y={chartPadding.top + chartHeight + 18}
+                      textAnchor="middle"
+                      fill="var(--text-secondary)"
+                      fontSize="10px"
+                      fontWeight="600"
+                    >
+                      {p.label}
+                    </text>
+
+                    {/* Interactive overlay */}
+                    <rect
+                      x={chartPadding.left + barGroupWidth * i}
+                      y={chartPadding.top}
+                      width={barGroupWidth}
+                      height={chartHeight}
+                      fill="transparent"
+                      style={{ cursor: 'pointer' }}
+                      onMouseEnter={() => {
+                        setHoveredBar(p);
+                        setTooltipPos({ x: colCenterX, y: zeroY });
+                      }}
+                      onMouseMove={() => {
+                        setHoveredBar(p);
+                        setTooltipPos({ x: colCenterX, y: zeroY });
+                      }}
+                      onMouseLeave={() => setHoveredBar(null)}
+                    />
+                  </g>
+                );
+              }
+
+              const isPos = p.growth > 0;
+              const isNeg = p.growth < 0;
+
+              let fill = 'rgba(99, 102, 241, 0.15)'; // default/zero color
+              let stroke = 'var(--color-primary)';
+              if (isPos) {
+                fill = 'rgba(16, 185, 129, 0.15)';
+                stroke = '#10b981';
+              } else if (isNeg) {
+                fill = 'rgba(239, 68, 68, 0.15)';
+                stroke = '#ef4444';
+              }
+
+              const valY = getGrowthY(p.growth);
+              const barHeight = Math.max(2, Math.abs(zeroY - valY));
+              const rectY = isPos ? valY : (isNeg ? zeroY : zeroY - 1);
+
+              return (
+                <g key={p.id}>
+                  {/* Growth Bar */}
+                  <rect
+                    x={barX}
+                    y={rectY}
+                    width={barWidth}
+                    height={barHeight}
+                    fill={fill}
+                    stroke={stroke}
+                    strokeWidth="1.5"
+                    rx={3}
+                    style={{ transition: 'all 0.3s ease' }}
+                  />
+
+                  {/* X-axis label */}
+                  <text
+                    x={colCenterX}
+                    y={chartPadding.top + chartHeight + 18}
+                    textAnchor="middle"
+                    fill="var(--text-secondary)"
+                    fontSize="10px"
+                    fontWeight="600"
+                  >
+                    {p.label}
+                  </text>
+
+                  {/* Interactive overlay */}
+                  <rect
+                    x={chartPadding.left + barGroupWidth * i}
+                    y={chartPadding.top}
+                    width={barGroupWidth}
+                    height={chartHeight}
+                    fill="transparent"
+                    style={{ cursor: 'pointer' }}
+                    onMouseEnter={() => {
+                      setHoveredBar(p);
+                      setTooltipPos({ x: colCenterX, y: isPos ? valY : (isNeg ? zeroY : zeroY) });
+                    }}
+                    onMouseMove={() => {
+                      setHoveredBar(p);
+                      setTooltipPos({ x: colCenterX, y: isPos ? valY : (isNeg ? zeroY : zeroY) });
+                    }}
+                    onMouseLeave={() => setHoveredBar(null)}
+                  />
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* Floating Tooltip */}
+          {hoveredBar && (() => {
+            const isPos = hoveredBar.growth > 0;
+            const sign = isPos ? '+' : '';
+            const prevIdx = activePeriods.findIndex(p => p.id === hoveredBar.id) - 1;
+            const prevP = prevIdx >= 0 ? activePeriods[prevIdx] : null;
+
+            return (
+              <div
+                className="chart-tooltip animate-fade-in"
+                style={{
+                  left: `${(tooltipPos.x / 680) * 100}%`,
+                  top: `${(tooltipPos.y / 240) * 100}%`,
+                  transform: 'translate(-50%, -100%)',
+                  marginTop: '-10px',
+                  pointerEvents: 'none',
+                  zIndex: 100,
+                  boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.4)'
+                }}
+              >
+                <div className="tooltip-title" style={{ justifyContent: 'space-between', width: '100%', gap: '1rem' }}>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700 }}>{hoveredBar.label}</span>
+                  {hoveredBar.growth !== null ? (
+                    hoveredBar.growth === 0 ? (
+                      <span
+                        className="tooltip-badge hike"
+                        style={{
+                          fontSize: '0.72rem',
+                          padding: '0.15rem 0.45rem',
+                          color: 'var(--color-primary)',
+                          background: 'rgba(99, 102, 241, 0.1)',
+                          borderColor: 'rgba(99, 102, 241, 0.2)',
+                          borderRadius: '4px',
+                          border: '1px solid'
+                        }}
+                      >
+                        0.0%
+                      </span>
+                    ) : (
+                      <span
+                        className={`tooltip-badge ${isPos ? 'bonus' : 'hike'}`}
+                        style={{
+                          fontSize: '0.72rem',
+                          padding: '0.15rem 0.45rem',
+                          color: isPos ? '#10b981' : '#ef4444',
+                          background: isPos ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                          borderColor: isPos ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                          borderRadius: '4px',
+                          border: '1px solid'
+                        }}
+                      >
+                        {sign}{hoveredBar.growth.toFixed(1)}%
+                      </span>
+                    )
+                  ) : (
+                    <span
+                      className="tooltip-badge hike"
+                      style={{
+                        fontSize: '0.72rem',
+                        padding: '0.15rem 0.45rem',
+                        color: 'var(--color-primary)',
+                        background: 'rgba(99, 102, 241, 0.1)',
+                        borderColor: 'rgba(99, 102, 241, 0.2)',
+                        borderRadius: '4px',
+                        border: '1px solid'
+                      }}
+                    >
+                      Start
+                    </span>
+                  )}
                 </div>
-                <div style={{ fontWeight: 600 }}>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginRight: '0.35rem' }}>Total:</span>
-                  <span style={{ color: 'var(--color-primary)' }}>{formatFullCurrency(p.total)}</span>
+
+                <div style={{ marginTop: '0.35rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    Earnings: <strong style={{ color: 'var(--color-primary)' }}>{formatFullCurrency(hoveredBar.total)}</strong>
+                  </div>
+                  {prevP && (
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      Prev Period: <strong>{formatFullCurrency(prevP.total)}</strong>
+                    </div>
+                  )}
+                </div>
+
+                {/* Breakdown context */}
+                <div style={{
+                  borderTop: '1px solid rgba(255, 255, 255, 0.06)',
+                  marginTop: '0.5rem',
+                  paddingTop: '0.4rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.2rem',
+                  fontSize: '0.68rem',
+                  color: 'var(--text-muted)'
+                }}>
+                  {hoveredBar.base > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-base)' }}></span>
+                        <span>Base</span>
+                      </div>
+                      <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatFullCurrency(hoveredBar.base)}</span>
+                    </div>
+                  )}
+                  {hoveredBar.bonus > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-bonus)' }}></span>
+                        <span>Bonus</span>
+                      </div>
+                      <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatFullCurrency(hoveredBar.bonus)}</span>
+                    </div>
+                  )}
+                  {hoveredBar.vest > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-vest)' }}></span>
+                        <span>Vested</span>
+                      </div>
+                      <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatFullCurrency(hoveredBar.vest)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
+            );
+          })()}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          {activePeriods.map(p => {
+            const basePct = (p.base / maxPeriodTotal) * 100;
+            const bonusPct = (p.bonus / maxPeriodTotal) * 100;
+            const vestPct = (p.vest / maxPeriodTotal) * 100;
 
-              {/* Progress Stacks */}
-              <div style={{ height: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px', display: 'flex', overflow: 'hidden', width: '100%' }}>
-                {p.base > 0 && (
-                  <div 
-                    style={{ width: `${basePct}%`, background: 'var(--color-base)' }} 
-                    title={`Base: ${formatFullCurrency(p.base)} (${p.total > 0 ? ((p.base / p.total) * 100).toFixed(0) : 0}%)`}
-                  />
-                )}
-                {p.bonus > 0 && (
-                  <div 
-                    style={{ width: `${bonusPct}%`, background: 'var(--color-bonus)' }} 
-                    title={`Bonus: ${formatFullCurrency(p.bonus)} (${p.total > 0 ? ((p.bonus / p.total) * 100).toFixed(0) : 0}%)`}
-                  />
-                )}
-                {p.vest > 0 && (
-                  <div 
-                    style={{ width: `${vestPct}%`, background: 'var(--color-vest)' }} 
-                    title={`Vested: ${formatFullCurrency(p.vest)} (${p.total > 0 ? ((p.vest / p.total) * 100).toFixed(0) : 0}%)`}
-                  />
-                )}
-              </div>
+            // Growth element styling
+            let growthEl;
+            if (p.growth !== null) {
+              if (p.growth === 0) {
+                growthEl = (
+                  <span
+                    className="tooltip-badge hike"
+                    style={{
+                      fontSize: '0.75rem',
+                      padding: '0.15rem 0.45rem',
+                      color: 'var(--color-primary)',
+                      background: 'rgba(99, 102, 241, 0.1)',
+                      borderColor: 'rgba(99, 102, 241, 0.2)'
+                    }}
+                  >
+                    0.0%
+                  </span>
+                );
+              } else {
+                const growthVal = p.growth;
+                const isGrowthPos = growthVal > 0;
+                const sign = isGrowthPos ? '+' : '';
+                growthEl = (
+                  <span
+                    className={`tooltip-badge ${isGrowthPos ? 'bonus' : 'hike'}`}
+                    style={{
+                      fontSize: '0.75rem',
+                      padding: '0.15rem 0.45rem',
+                      color: isGrowthPos ? '#10b981' : '#ef4444',
+                      background: isGrowthPos ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+                      borderColor: isGrowthPos ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)'
+                    }}
+                  >
+                    {sign}{growthVal.toFixed(1)}%
+                  </span>
+                );
+              }
+            } else {
+              growthEl = (
+                <span className="tooltip-badge hike" style={{ fontSize: '0.75rem', padding: '0.15rem 0.45rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.05)' }}>
+                  —
+                </span>
+              );
+            }
 
-              {/* Detailed breakout text under the bar */}
-              <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.1rem', flexWrap: 'wrap' }}>
-                {p.base > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-base)' }}></span>
-                    <span>Base: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.base)}</strong> ({p.total > 0 ? ((p.base / p.total) * 100).toFixed(0) : 0}%)</span>
+            return (
+              <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontWeight: 700, color: 'var(--text-primary)' }}>{p.label}</span>
+                    {growthEl}
                   </div>
-                )}
-                {p.bonus > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-bonus)' }}></span>
-                    <span>Bonus: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.bonus)}</strong> ({p.total > 0 ? ((p.bonus / p.total) * 100).toFixed(0) : 0}%)</span>
+                  <div style={{ fontWeight: 600 }}>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginRight: '0.35rem' }}>Total:</span>
+                    <span style={{ color: 'var(--color-primary)' }}>{formatFullCurrency(p.total)}</span>
                   </div>
-                )}
-                {p.vest > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-vest)' }}></span>
-                    <span>Vested: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.vest)}</strong> ({p.total > 0 ? ((p.vest / p.total) * 100).toFixed(0) : 0}%)</span>
-                  </div>
-                )}
+                </div>
+
+                {/* Progress Stacks */}
+                <div style={{ height: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px', display: 'flex', overflow: 'hidden', width: '100%' }}>
+                  {p.base > 0 && (
+                    <div
+                      style={{ width: `${basePct}%`, background: 'var(--color-base)' }}
+                      title={`Base: ${formatFullCurrency(p.base)} (${p.total > 0 ? ((p.base / p.total) * 100).toFixed(0) : 0}%)`}
+                    />
+                  )}
+                  {p.bonus > 0 && (
+                    <div
+                      style={{ width: `${bonusPct}%`, background: 'var(--color-bonus)' }}
+                      title={`Bonus: ${formatFullCurrency(p.bonus)} (${p.total > 0 ? ((p.bonus / p.total) * 100).toFixed(0) : 0}%)`}
+                    />
+                  )}
+                  {p.vest > 0 && (
+                    <div
+                      style={{ width: `${vestPct}%`, background: 'var(--color-vest)' }}
+                      title={`Vested: ${formatFullCurrency(p.vest)} (${p.total > 0 ? ((p.vest / p.total) * 100).toFixed(0) : 0}%)`}
+                    />
+                  )}
+                </div>
+
+                {/* Detailed breakout text under the bar */}
+                <div style={{ display: 'flex', gap: '1rem', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.1rem', flexWrap: 'wrap' }}>
+                  {p.base > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-base)' }}></span>
+                      <span>Base: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.base)}</strong> ({p.total > 0 ? ((p.base / p.total) * 100).toFixed(0) : 0}%)</span>
+                    </div>
+                  )}
+                  {p.bonus > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-bonus)' }}></span>
+                      <span>Bonus: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.bonus)}</strong> ({p.total > 0 ? ((p.bonus / p.total) * 100).toFixed(0) : 0}%)</span>
+                    </div>
+                  )}
+                  {p.vest > 0 && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-vest)' }}></span>
+                      <span>Vested: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.vest)}</strong> ({p.total > 0 ? ((p.vest / p.total) * 100).toFixed(0) : 0}%)</span>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
