@@ -577,15 +577,15 @@ export default function EventForm({
               const companyTag = item.company || 'Self-Employed';
 
               return (
-                <div key={item.id} className="manager-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0.75rem', borderBottom: '1px solid var(--border-color)' }}>
-                  <div className="manager-item-info" style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', overflow: 'hidden', flex: 1, marginRight: '0.5rem' }}>
-                    <div className="manager-item-name" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <span className={`tooltip-badge ${colorClass}`} style={{ fontSize: '0.7rem', padding: '0.1rem 0.35rem', textTransform: 'capitalize' }}>{label}</span>
-                      <span style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>
+                <div key={item.id} className="manager-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0.75rem', borderBottom: '1px solid var(--border-color)', minWidth: 0 }}>
+                  <div className="manager-item-info" style={{ display: 'flex', flexDirection: 'column', gap: '0.15rem', overflow: 'hidden', flex: 1, marginRight: '0.5rem', minWidth: 0 }}>
+                    <div className="manager-item-name" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                      <span className={`tooltip-badge ${colorClass}`} style={{ fontSize: '0.7rem', padding: '0.1rem 0.35rem', textTransform: 'capitalize', flexShrink: 0 }}>{label}</span>
+                      <span style={{ fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600, flex: 1, minWidth: 0 }} title={item.title}>
                         {item.title}
                       </span>
                     </div>
-                    <div className="manager-item-meta" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    <div className="manager-item-meta" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${formatDateLabel(item.date)} • ${isSalary ? 'Salary' : 'Amount'}: ${formatCurrency(isSalary ? item.salary : item.amount)}${isSalary ? '/yr' : ''} • Employer: ${companyTag}`}>
                       {formatDateLabel(item.date)} • <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatCurrency(isSalary ? item.salary : item.amount)}</span>
                       {isSalary && ' / yr'} • <strong style={{ color: 'var(--color-primary)' }}>{companyTag}</strong>
                     </div>

@@ -912,7 +912,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
               <span className={`tooltip-badge ${hoveredItem.type}`}>
                 {hoveredItem.type}
               </span>
-              <span style={{ fontSize: '0.8rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px' }}>
+              <span style={{ fontSize: '0.8rem', fontWeight: 600, wordBreak: 'break-word', display: 'inline-block', maxWidth: '220px' }}>
                 {hoveredItem.title}
               </span>
             </div>
@@ -1137,10 +1137,10 @@ function CompanyEarningsList({ salaryEvents, compEvents, startDate, formatFullCu
                 }}
               >
                 {/* Info Header */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)' }}>{company.name}</span>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', minWidth: 0, gap: '1rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0, flex: 1 }}>
+                    <span style={{ fontSize: '0.88rem', fontWeight: 700, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px', display: 'inline-block' }} title={company.name}>{company.name}</span>
+                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', flexShrink: 0 }}>
                       ({formatDateLabel(company.earliestDate)} - {formatDateLabel(company.latestDate)})
                     </span>
                   </div>
