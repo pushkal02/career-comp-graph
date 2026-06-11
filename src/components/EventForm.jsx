@@ -221,7 +221,7 @@ export default function EventForm({
 
   const getDefaultCompTitle = (type) => {
     if (type === 'bonus') return 'Cash Bonus';
-    if (type === 'grant') return 'Equity Grant';
+    if (type === 'grant') return 'Grant';
     return 'Stock Vesting';
   };
 
@@ -508,7 +508,7 @@ export default function EventForm({
                 <label><Tag size={12} style={{ marginRight: 4 }} /> Category</label>
                 <select value={compType} onChange={(e) => setCompType(e.target.value)}>
                   <option value="bonus">Cash Bonus</option>
-                  <option value="grant">Stock Grant (Initial/Refresh)</option>
+                  <option value="grant">Grant (Patent, Stock, etc.)</option>
                   <option value="vest">Vested Stock (RSUs / Options)</option>
                 </select>
               </div>
@@ -655,7 +655,7 @@ export default function EventForm({
                 <label><Tag size={12} style={{ marginRight: 4 }} /> Category</label>
                 <select value={editType} onChange={(e) => setEditType(e.target.value)}>
                   <option value="bonus">Cash Bonus</option>
-                  <option value="grant">Stock Grant (Initial/Refresh)</option>
+                  <option value="grant">Grant (Patent, Stock, etc.)</option>
                   <option value="vest">Vested Stock (RSUs / Options)</option>
                 </select>
               </div>

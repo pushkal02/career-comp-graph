@@ -120,9 +120,9 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
       className: "bonus"
     },
     {
-      label: "Total Stock Grants",
+      label: "Total Grants",
       value: formatCurrency(totalGrant),
-      subtext: "Total paper value of equity allocations",
+      subtext: "Total value of patent, stock, or other allocations",
       icon: <Layers size={20} style={{ color: 'var(--color-grant)' }} />,
       className: "grant"
     },

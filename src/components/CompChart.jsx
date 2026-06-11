@@ -494,7 +494,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
           { key: 'promotion', label: 'Promotions', color: 'var(--color-promotion)' },
           { key: 'jobswitch', label: 'Job Switches', color: 'var(--color-switch)' },
           { key: 'bonus', label: 'Bonuses', color: 'var(--color-bonus)' },
-          { key: 'grant', label: 'Stock Grants', color: 'var(--color-grant)' },
+          { key: 'grant', label: 'Grants', color: 'var(--color-grant)' },
           { key: 'vest', label: 'Vesting', color: 'var(--color-vest)' }
         ].map((filter) => {
           const isActive = filters[filter.key];
