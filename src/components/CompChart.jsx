@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
-import { Download, FileSpreadsheet, Upload } from 'lucide-react';
+import { Download, FileSpreadsheet, Upload, Sparkles, Image } from 'lucide-react';
 import { convertCurrency } from '../utils/currency';
 
-export default function CompChart({ salaryEvents, compEvents, startDate, currency, userName, onImportJSON }) {
+export default function CompChart({ salaryEvents, compEvents, startDate, currency, userName, onImportJSON, onOpenShareCard }) {
   const containerRef = useRef(null);
   const fileInputRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 450 });
@@ -97,6 +97,17 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
     // Create a style element with inline CSS to preserve formatting in export
     const styleEl = document.createElementNS('http://www.w3.org/2000/svg', 'style');
     styleEl.textContent = `
+      :root {
+        --color-base: ${isLightMode ? '#0284c7' : '#38bdf8'};
+        --color-hike: #14b8a6;
+        --color-promotion: #ec4899;
+        --color-switch: #3b82f6;
+        --color-bonus: ${isLightMode ? '#059669' : '#10b981'};
+        --color-grant: ${isLightMode ? '#d97706' : '#f59e0b'};
+        --color-vest: ${isLightMode ? '#7c3aed' : '#a855f7'};
+        --bg-primary: ${isLightMode ? '#f8fafc' : '#070a13'};
+        --text-primary: ${isLightMode ? '#0f172a' : '#f8fafc'};
+      }
       svg { background-color: ${isLightMode ? '#f8fafc' : '#070a13'}; font-family: 'Outfit', sans-serif; }
       .chart-grid-line { stroke: ${isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.03)'}; stroke-width: 1; }
       .chart-axis-line { stroke: ${isLightMode ? 'rgba(15, 23, 42, 0.15)' : 'rgba(255, 255, 255, 0.15)'}; stroke-width: 1; }
@@ -166,6 +177,71 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
     
     const a = document.createElement('a');
     a.download = `career-compensation-data-${startDate || '2024-01'}.json`;
+    a.href = url;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportCSV = () => {
+    const escapeCSV = (val) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    // Combine all events chronologically
+    const allEvents = [
+      ...salaryEvents.map(e => ({
+        date: e.date,
+        category: 'Base Salary',
+        type: e.type,
+        origVal: e.salary,
+        origCurr: e.currency || 'USD',
+        convVal: convertCurrency(e.salary, e.currency || 'USD', currency),
+        company: e.company || 'Self-Employed',
+        location: e.location || '',
+        title: e.title || ''
+      })),
+      ...compEvents.map(e => ({
+        date: e.date,
+        category: 'Compensation',
+        type: e.type,
+        origVal: e.amount,
+        origCurr: e.currency || 'USD',
+        convVal: convertCurrency(e.amount, e.currency || 'USD', currency),
+        company: e.company || 'Self-Employed',
+        location: e.location || '',
+        title: e.title || ''
+      }))
+    ].sort((a, b) => {
+      const normA = a.date.length === 7 ? `${a.date}-01` : a.date;
+      const normB = b.date.length === 7 ? `${b.date}-01` : b.date;
+      return normA.localeCompare(normB);
+    });
+
+    const headers = ['Date', 'Category', 'Type', 'Original Amount', 'Original Currency', 'Converted Amount', 'Converted Currency', 'Employer', 'Location', 'Title'];
+    const rows = allEvents.map(e => [
+      escapeCSV(e.date),
+      escapeCSV(e.category),
+      escapeCSV(e.type),
+      e.origVal,
+      escapeCSV(e.origCurr),
+      e.convVal,
+      escapeCSV(currency),
+      escapeCSV(e.company),
+      escapeCSV(e.location),
+      escapeCSV(e.title)
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(csvBlob);
+
+    const a = document.createElement('a');
+    a.download = `career-compensation-data-${startDate || '2024-01'}.csv`;
     a.href = url;
     a.click();
     URL.revokeObjectURL(url);
@@ -447,7 +523,25 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
             </div>
           </div>
           {/* Action buttons */}
-          <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button
+              onClick={onOpenShareCard}
+              className="btn"
+              style={{ 
+                padding: '0.25rem 0.6rem', 
+                fontSize: '0.75rem', 
+                width: 'auto', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.25rem', 
+                background: 'var(--color-primary)', 
+                color: '#fff',
+                borderColor: 'var(--color-primary-hover)'
+              }}
+              title="Generate a beautiful shareable social card"
+            >
+              <Sparkles size={13} /> Share Card
+            </button>
             <button
               onClick={downloadChartPNG}
               className="btn btn-secondary"
@@ -463,6 +557,14 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
               title="Export data as JSON file"
             >
               <FileSpreadsheet size={13} /> Export JSON
+            </button>
+            <button
+              onClick={exportCSV}
+              className="btn btn-secondary"
+              style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', width: 'auto', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+              title="Export data as CSV spreadsheet"
+            >
+              <FileSpreadsheet size={13} /> Export CSV
             </button>
             <button
               onClick={() => fileInputRef.current?.click()}
@@ -682,6 +784,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
                        date: formatDateLabel(evt.date),
                        type: evt.type,
                        company: evt.company || 'Self-Employed',
+                       location: evt.location,
                        category: 'salary'
                      });
                    }}
@@ -801,6 +904,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
                                 date: formatDateLabel(evt.date),
                                 type: evt.type,
                                 company: evt.company || 'Self-Employed',
+                                location: evt.location,
                                 category: 'comp'
                               });
                             }}
@@ -862,6 +966,7 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
                                 date: formatDateLabel(evt.date),
                                 type: evt.type,
                                 company: evt.company || 'Self-Employed',
+                                location: evt.location,
                                 category: 'comp'
                               });
                             }}
@@ -932,6 +1037,11 @@ export default function CompChart({ salaryEvents, compEvents, startDate, currenc
             {hoveredItem.company && (
               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem', marginBottom: '0.1rem' }}>
                 Employer: <strong style={{ color: 'var(--color-primary)' }}>{hoveredItem.company}</strong>
+              </div>
+            )}
+            {hoveredItem.location && (
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '4px', marginTop: '0.15rem', marginBottom: '0.1rem' }}>
+                <span>📍</span> <span>{hoveredItem.location}</span>
               </div>
             )}
             {hoveredItem.subValue && (

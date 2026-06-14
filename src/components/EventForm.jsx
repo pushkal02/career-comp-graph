@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PlusCircle, Trash2, Shield, TrendingUp, Calendar, Tag, Briefcase, Edit3, X, Check } from 'lucide-react';
+import { PlusCircle, Trash2, Shield, TrendingUp, Calendar, Tag, Briefcase, Edit3, X, Check, MapPin } from 'lucide-react';
 
 export default function EventForm({ 
   salaryEvents, 
@@ -66,6 +66,7 @@ export default function EventForm({
   const [salaryTitle, setSalaryTitle] = useState('');
   const [salaryWorkType, setSalaryWorkType] = useState('Company'); // Company, Freelance, Self-Employed
   const [salaryCompany, setSalaryCompany] = useState('');
+  const [salaryLocation, setSalaryLocation] = useState('');
 
   // Comp form state
   const [compYear, setCompYear] = useState(() => (startDate || '2024-01').split('-')[0]);
@@ -77,6 +78,7 @@ export default function EventForm({
   const [compTitle, setCompTitle] = useState('');
   const [compWorkType, setCompWorkType] = useState('Company'); // Company, Freelance, Self-Employed
   const [compCompany, setCompCompany] = useState('');
+  const [compLocation, setCompLocation] = useState('');
 
   // Editing state
   const [editingEvent, setEditingEvent] = useState(null); // stores { ...event, eventCategory: 'salary'|'comp' }
@@ -89,6 +91,7 @@ export default function EventForm({
   const [editTitle, setEditTitle] = useState('');
   const [editWorkType, setEditWorkType] = useState('Company');
   const [editCompany, setEditCompany] = useState('');
+  const [editLocation, setEditLocation] = useState('');
 
   // Sync date inputs when baseline changes (during render)
   const [prevStartDate, setPrevStartDate] = useState(startDate);
@@ -124,12 +127,14 @@ export default function EventForm({
       type: salaryType,
       currency: salaryCurrency,
       title: salaryTitle.trim() || getDefaultSalaryTitle(salaryType),
-      company: salaryWorkType === 'Company' ? salaryCompany.trim() || 'Self-Employed' : salaryWorkType
+      company: salaryWorkType === 'Company' ? salaryCompany.trim() || 'Self-Employed' : salaryWorkType,
+      location: salaryLocation.trim() || undefined
     });
 
     // Reset inputs
     setSalaryTitle('');
     setSalaryCompany('');
+    setSalaryLocation('');
   };
 
   const handleCompSubmit = (e) => {
@@ -142,12 +147,14 @@ export default function EventForm({
       type: compType,
       currency: compCurrency,
       title: compTitle.trim() || getDefaultCompTitle(compType),
-      company: compWorkType === 'Company' ? compCompany.trim() || 'Self-Employed' : compWorkType
+      company: compWorkType === 'Company' ? compCompany.trim() || 'Self-Employed' : compWorkType,
+      location: compLocation.trim() || undefined
     });
 
     // Reset inputs
     setCompTitle('');
     setCompCompany('');
+    setCompLocation('');
   };
 
   const startEdit = (item) => {
@@ -162,6 +169,7 @@ export default function EventForm({
     setEditType(item.type);
     setEditCurrency(item.currency || currency || 'USD');
     setEditTitle(item.title || '');
+    setEditLocation(item.location || '');
 
     const itemCompany = item.company || 'Self-Employed';
     if (['Freelance', 'Self-Employed'].includes(itemCompany)) {
@@ -190,7 +198,8 @@ export default function EventForm({
         type: editType,
         currency: editCurrency,
         title: editTitle.trim() || getDefaultSalaryTitle(editType),
-        company: finalCompany
+        company: finalCompany,
+        location: editLocation.trim() || undefined
       });
     } else {
       onEditCompEvent({
@@ -200,16 +209,19 @@ export default function EventForm({
         type: editType,
         currency: editCurrency,
         title: editTitle.trim() || getDefaultCompTitle(editType),
-        company: finalCompany
+        company: finalCompany,
+        location: editLocation.trim() || undefined
       });
     }
 
     setEditingEvent(null);
+    setEditLocation('');
     setActiveTab('manage');
   };
 
   const cancelEdit = () => {
     setEditingEvent(null);
+    setEditLocation('');
     setActiveTab('manage');
   };
 
@@ -464,6 +476,16 @@ export default function EventForm({
                 />
               </div>
 
+              <div className="form-group">
+                <label><MapPin size={12} style={{ marginRight: 4 }} /> Location (Optional)</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Bangalore, India, Remote"
+                  value={salaryLocation}
+                  onChange={(e) => setSalaryLocation(e.target.value)}
+                />
+              </div>
+
               <button type="submit" className="btn btn-primary" style={{ marginTop: '0.5rem' }}>
                 <PlusCircle size={18} /> Update Salary
               </button>
@@ -588,6 +610,16 @@ export default function EventForm({
                   placeholder="e.g. Sign-on Bonus, Annual RSUs, etc."
                   value={compTitle}
                   onChange={(e) => setCompTitle(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label><MapPin size={12} style={{ marginRight: 4 }} /> Location (Optional)</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. London, UK, Remote"
+                  value={compLocation}
+                  onChange={(e) => setCompLocation(e.target.value)}
                 />
               </div>
 
@@ -739,6 +771,16 @@ export default function EventForm({
               />
             </div>
 
+            <div className="form-group">
+              <label><MapPin size={12} style={{ marginRight: 4 }} /> Location (Optional)</label>
+              <input 
+                type="text" 
+                placeholder="e.g. Remote, city, etc."
+                value={editLocation}
+                onChange={(e) => setEditLocation(e.target.value)}
+              />
+            </div>
+
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
               <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
                 <Check size={16} /> Save Changes
@@ -782,9 +824,10 @@ export default function EventForm({
                         {item.title}
                       </span>
                     </div>
-                    <div className="manager-item-meta" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${formatDateLabel(item.date)} • ${isSalary ? 'Salary' : 'Amount'}: ${formatCurrency(isSalary ? item.salary : item.amount, item.currency)}${isSalary ? '/yr' : ''} • Employer: ${companyTag}`}>
+                    <div className="manager-item-meta" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${formatDateLabel(item.date)} • ${isSalary ? 'Salary' : 'Amount'}: ${formatCurrency(isSalary ? item.salary : item.amount, item.currency)}${isSalary ? '/yr' : ''} • Employer: ${companyTag}${item.location ? ` • Location: ${item.location}` : ''}`}>
                       {formatDateLabel(item.date)} • <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatCurrency(isSalary ? item.salary : item.amount, item.currency)}</span>
                       {isSalary && ' / yr'} • <strong style={{ color: 'var(--color-primary)' }}>{companyTag}</strong>
+                      {item.location && ` • 📍 ${item.location}`}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '0.25rem' }}>

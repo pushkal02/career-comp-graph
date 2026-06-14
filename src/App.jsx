@@ -3,6 +3,7 @@ import CompChart from './components/CompChart';
 import EventForm from './components/EventForm';
 import DashboardStats from './components/DashboardStats';
 import { Sparkles, Sun, Moon } from 'lucide-react';
+import ShareCardModal from './components/ShareCardModal';
 
 const getInitialState = () => {
   const savedTheme = localStorage.getItem('comp_graph_theme') || 'dark';
@@ -71,6 +72,7 @@ export default function App() {
   // User details state
   const [userName, setUserName] = useState(() => localStorage.getItem('comp_graph_user_name') || '');
   const [showUserModal, setShowUserModal] = useState(() => !localStorage.getItem('comp_graph_user_name'));
+  const [showShareModal, setShowShareModal] = useState(false);
 
   const [modalName, setModalName] = useState(userName);
 
@@ -387,6 +389,7 @@ export default function App() {
             currency={currency} 
             userName={userName}
             onImportJSON={handleImportJSON} 
+            onOpenShareCard={() => setShowShareModal(true)}
           />
         </div>
 
@@ -412,6 +415,16 @@ export default function App() {
           CompGraph &copy; 2026. Created by Pushkal Pandey with ❤️ • Made with high-fidelity React SVGs.
         </p>
       </footer>
+
+      <ShareCardModal
+        isOpen={showShareModal}
+        onClose={() => setShowShareModal(false)}
+        salaryEvents={salaryEvents}
+        compEvents={compEvents}
+        startDate={startDate}
+        currency={currency}
+        userName={userName}
+      />
     </div>
   );
 }
