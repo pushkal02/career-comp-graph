@@ -4,6 +4,7 @@ import EventForm from './components/EventForm';
 import DashboardStats from './components/DashboardStats';
 import { Sparkles, Sun, Moon } from 'lucide-react';
 import ShareCardModal from './components/ShareCardModal';
+import { EXCHANGE_RATES, DEFAULT_PPP_FACTORS } from './utils/currency';
 
 const getInitialState = () => {
   const savedTheme = localStorage.getItem('comp_graph_theme') || 'dark';
@@ -69,6 +70,11 @@ export default function App() {
   const [currency, setCurrency] = useState(initialState.currency);
   const [theme, setTheme] = useState(initialState.theme);
 
+  // Dynamic rates and PPP factors caching states
+  const [exchangeRates, setExchangeRates] = useState(EXCHANGE_RATES);
+  const [pppFactors, setPppFactors] = useState(DEFAULT_PPP_FACTORS);
+  const [pppMode, setPppMode] = useState(() => localStorage.getItem('comp_graph_ppp_mode') === 'true');
+
   // User details state
   const [userName, setUserName] = useState(() => localStorage.getItem('comp_graph_user_name') || '');
   const [showUserModal, setShowUserModal] = useState(() => !localStorage.getItem('comp_graph_user_name'));
@@ -98,6 +104,83 @@ export default function App() {
   useEffect(() => {
     document.body.setAttribute('data-theme', theme);
   }, [theme]);
+
+  // Save PPP Mode choice
+  useEffect(() => {
+    localStorage.setItem('comp_graph_ppp_mode', pppMode ? 'true' : 'false');
+  }, [pppMode]);
+
+  // Fetch live exchange rates and World Bank PPP factors with local caching
+  useEffect(() => {
+    const loadRatesAndPPP = async () => {
+      const envVal = Number(import.meta.env.VITE_CACHE_DURATION_MS);
+      const cacheDuration = !isNaN(envVal) ? envVal : 86400000;
+      const cachedRatesStr = localStorage.getItem('comp_graph_cached_rates');
+      const cachedPppStr = localStorage.getItem('comp_graph_cached_ppp');
+      const cacheTimestamp = localStorage.getItem('comp_graph_cache_timestamp');
+      const now = Date.now();
+
+      if (cacheTimestamp && cachedRatesStr && cachedPppStr && (now - Number(cacheTimestamp) < cacheDuration)) {
+        try {
+          setExchangeRates(JSON.parse(cachedRatesStr));
+          setPppFactors(JSON.parse(cachedPppStr));
+          return;
+        } catch {
+          // Proceed to fetch on parse errors
+        }
+      }
+
+      try {
+        const ratesPromise = fetch('https://open.er-api.com/v6/latest/USD')
+          .then(res => res.json())
+          .then(data => {
+            if (data && data.rates) {
+              return data.rates;
+            }
+            throw new Error('Invalid exchange rates response');
+          });
+
+        const pppPromise = fetch('https://api.worldbank.org/v2/country/US;IN;GB;DE;JP;CA;AU;SG/indicator/PA.NUS.PRVT.PP?format=json&date=2023&per_page=50')
+          .then(res => res.json())
+          .then(data => {
+            if (Array.isArray(data) && data.length > 1 && Array.isArray(data[1])) {
+              const parsedPPP = {};
+              data[1].forEach(item => {
+                if (item.country && item.country.id && item.value !== null && item.value !== undefined) {
+                  parsedPPP[item.country.id.toUpperCase()] = Number(item.value);
+                }
+              });
+              return parsedPPP;
+            }
+            throw new Error('Invalid PPP response');
+          });
+
+        const [fetchedRates, fetchedPPP] = await Promise.all([ratesPromise, pppPromise]);
+
+        const updatedRates = { ...EXCHANGE_RATES, ...fetchedRates };
+        const updatedPPP = { ...DEFAULT_PPP_FACTORS, ...fetchedPPP };
+
+        setExchangeRates(updatedRates);
+        setPppFactors(updatedPPP);
+
+        localStorage.setItem('comp_graph_cached_rates', JSON.stringify(updatedRates));
+        localStorage.setItem('comp_graph_cached_ppp', JSON.stringify(updatedPPP));
+        localStorage.setItem('comp_graph_cache_timestamp', now.toString());
+      } catch (err) {
+        console.error('Failed to fetch dynamic exchange rates or PPP factors, using defaults:', err);
+        if (cachedRatesStr && cachedPppStr) {
+          try {
+            setExchangeRates(JSON.parse(cachedRatesStr));
+            setPppFactors(JSON.parse(cachedPppStr));
+          } catch {
+            // Keep defaults
+          }
+        }
+      }
+    };
+
+    loadRatesAndPPP();
+  }, []);
 
   // Handle user info form submission
   const handleUserSubmit = (e) => {
@@ -331,6 +414,31 @@ export default function App() {
 
           <div className="preset-selector" style={{ minWidth: 'auto' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              PPP Mode
+            </span>
+            <button
+              onClick={() => setPppMode(!pppMode)}
+              className="preset-btn"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                height: '35px',
+                padding: '0 0.85rem',
+                marginTop: '0.25rem',
+                fontWeight: 600,
+                color: pppMode ? 'var(--color-primary)' : 'var(--text-primary)',
+                borderColor: pppMode ? 'var(--color-primary)' : 'var(--border-color)',
+                background: pppMode ? 'rgba(99, 102, 241, 0.15)' : 'transparent'
+              }}
+              title="Toggle Purchasing Power Parity (USD PPP) adjustment"
+            >
+              {pppMode ? 'ON (PPP $)' : 'OFF'}
+            </button>
+          </div>
+
+          <div className="preset-selector" style={{ minWidth: 'auto' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Theme
             </span>
             <button
@@ -376,7 +484,15 @@ export default function App() {
       </header>
 
       {/* KPI Section */}
-      <DashboardStats salaryEvents={salaryEvents} compEvents={compEvents} startDate={startDate} currency={currency} />
+      <DashboardStats 
+        salaryEvents={salaryEvents} 
+        compEvents={compEvents} 
+        startDate={startDate} 
+        currency={currency} 
+        pppMode={pppMode}
+        exchangeRates={exchangeRates}
+        pppFactors={pppFactors}
+      />
 
       {/* Main Grid View */}
       <div className="dashboard-grid">
@@ -390,6 +506,9 @@ export default function App() {
             userName={userName}
             onImportJSON={handleImportJSON} 
             onOpenShareCard={() => setShowShareModal(true)}
+            pppMode={pppMode}
+            exchangeRates={exchangeRates}
+            pppFactors={pppFactors}
           />
         </div>
 
@@ -424,6 +543,9 @@ export default function App() {
         startDate={startDate}
         currency={currency}
         userName={userName}
+        pppMode={pppMode}
+        exchangeRates={exchangeRates}
+        pppFactors={pppFactors}
       />
     </div>
   );

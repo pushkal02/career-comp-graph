@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Download, Eye, EyeOff, Sparkles, Layout } from 'lucide-react';
-import { convertCurrency } from '../utils/currency';
+import { convertCurrency, convertToPPP } from '../utils/currency';
 
 function drawRoundedRect(ctx, x, y, width, height, radius) {
   ctx.beginPath();
@@ -35,7 +35,10 @@ export default function ShareCardModal({
   compEvents, 
   startDate, 
   currency, 
-  userName 
+  userName,
+  pppMode,
+  exchangeRates,
+  pppFactors 
 }) {
   const canvasRef = useRef(null);
   const [theme, setTheme] = useState('midnight'); // 'midnight', 'emerald', 'sunset', 'classic'
@@ -54,6 +57,15 @@ export default function ShareCardModal({
       const activeCurrency = currency || 'USD';
 
       const formatCurrencyVal = (val) => {
+        if (pppMode) {
+          const formatted = new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            maximumFractionDigits: 0
+          }).format(val);
+          return formatted.replace('$', 'PPP $');
+        }
+
         const getLocaleForCurrency = (curr) => {
           switch (curr) {
             case 'INR': return 'en-IN';
@@ -87,19 +99,27 @@ export default function ShareCardModal({
 
       const normalizeDate = (d) => (d && d.length === 7) ? `${d}-01` : d;
 
+      const convertValue = (amount, eventCurrency, countryCode) => {
+        if (pppMode) {
+          return convertToPPP(amount, eventCurrency, countryCode, exchangeRates, pppFactors);
+        } else {
+          return convertCurrency(amount, eventCurrency, activeCurrency, exchangeRates);
+        }
+      };
+
       const sortedSalaries = [...salaryEvents].sort((a, b) => 
         normalizeDate(a.date).localeCompare(normalizeDate(b.date))
       );
 
       const currentBase = sortedSalaries.length > 0
-        ? convertCurrency(sortedSalaries[sortedSalaries.length - 1].salary, sortedSalaries[sortedSalaries.length - 1].currency, activeCurrency)
+        ? convertValue(sortedSalaries[sortedSalaries.length - 1].salary, sortedSalaries[sortedSalaries.length - 1].currency, sortedSalaries[sortedSalaries.length - 1].country)
         : 0;
 
       // Growth percentage calculation
       let growthPct = 0;
       if (sortedSalaries.length > 1) {
-        const firstSalary = convertCurrency(sortedSalaries[0].salary, sortedSalaries[0].currency, activeCurrency);
-        const lastSalary = convertCurrency(sortedSalaries[sortedSalaries.length - 1].salary, sortedSalaries[sortedSalaries.length - 1].currency, activeCurrency);
+        const firstSalary = convertValue(sortedSalaries[0].salary, sortedSalaries[0].currency, sortedSalaries[0].country);
+        const lastSalary = convertValue(sortedSalaries[sortedSalaries.length - 1].salary, sortedSalaries[sortedSalaries.length - 1].currency, sortedSalaries[sortedSalaries.length - 1].country);
         if (firstSalary > 0) {
           growthPct = ((lastSalary - firstSalary) / firstSalary) * 100;
         }
@@ -126,7 +146,7 @@ export default function ShareCardModal({
           
           const durationYears = getYearDiff(segmentStart, segmentEnd);
           if (durationYears > 0) {
-            const segmentSalaryInDisplay = convertCurrency(currentEvent.salary, currentEvent.currency, activeCurrency);
+            const segmentSalaryInDisplay = convertValue(currentEvent.salary, currentEvent.currency, currentEvent.country);
             cumulativeBaseEarned += segmentSalaryInDisplay * durationYears;
           }
         }
@@ -134,11 +154,11 @@ export default function ShareCardModal({
 
       const totalBonus = compEvents
         .filter(e => e.type === 'bonus' && normalizeDate(e.date) < normCutoff)
-        .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, activeCurrency), 0);
+        .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
       const totalVest = compEvents
         .filter(e => e.type === 'vest' && normalizeDate(e.date) < normCutoff)
-        .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, activeCurrency), 0);
+        .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
       const totalRealized = cumulativeBaseEarned + totalBonus + totalVest;
 
@@ -281,7 +301,15 @@ export default function ShareCardModal({
         return baseMonths + (day - 1) / 30.4368;
       };
 
-      const salariesMapped = salaryEvents.map(e => convertCurrency(e.salary, e.currency, stats.activeCurrency));
+      const convertValue = (amount, eventCurrency, countryCode) => {
+        if (pppMode) {
+          return convertToPPP(amount, eventCurrency, countryCode, exchangeRates, pppFactors);
+        } else {
+          return convertCurrency(amount, eventCurrency, stats.activeCurrency, exchangeRates);
+        }
+      };
+
+      const salariesMapped = salaryEvents.map(e => convertValue(e.salary, e.currency, e.country));
       const maxSalary = salariesMapped.length > 0 ? Math.max(...salariesMapped) : 100000;
       const maxY = maxSalary * 1.15;
       const minY = 0;
@@ -303,13 +331,13 @@ export default function ShareCardModal({
       ctx.moveTo(firstX, getCanvasY(0));
       
       let lastX = firstX;
-      let lastY = getCanvasY(convertCurrency(sortedSalaries[0].salary, sortedSalaries[0].currency, stats.activeCurrency));
+      let lastY = getCanvasY(convertValue(sortedSalaries[0].salary, sortedSalaries[0].currency, sortedSalaries[0].country));
       ctx.lineTo(firstX, lastY);
 
       for (let i = 0; i < sortedSalaries.length; i++) {
         const curr = sortedSalaries[i];
         const next = sortedSalaries[i + 1];
-        const currSal = convertCurrency(curr.salary, curr.currency, stats.activeCurrency);
+        const currSal = convertValue(curr.salary, curr.currency, curr.country);
         const currentX = getCanvasX(curr.date);
         const currentY = getCanvasY(currSal);
 
@@ -336,12 +364,12 @@ export default function ShareCardModal({
 
       // Draw Step Line
       ctx.beginPath();
-      ctx.moveTo(firstX, getCanvasY(convertCurrency(sortedSalaries[0].salary, sortedSalaries[0].currency, stats.activeCurrency)));
+      ctx.moveTo(firstX, getCanvasY(convertValue(sortedSalaries[0].salary, sortedSalaries[0].currency, sortedSalaries[0].country)));
       
-      lastY = getCanvasY(convertCurrency(sortedSalaries[0].salary, sortedSalaries[0].currency, stats.activeCurrency));
+      lastY = getCanvasY(convertValue(sortedSalaries[0].salary, sortedSalaries[0].currency, sortedSalaries[0].country));
       for (let i = 0; i < sortedSalaries.length; i++) {
         const curr = sortedSalaries[i];
-        const currSal = convertCurrency(curr.salary, curr.currency, stats.activeCurrency);
+        const currSal = convertValue(curr.salary, curr.currency, curr.country);
         const currentX = getCanvasX(curr.date);
         const currentY = getCanvasY(currSal);
 
@@ -360,7 +388,7 @@ export default function ShareCardModal({
 
       // Draw Payout Circles
       const maxCompAmount = compEvents.length > 0 
-        ? Math.max(...compEvents.map(e => convertCurrency(e.amount, e.currency, stats.activeCurrency))) 
+        ? Math.max(...compEvents.map(e => convertValue(e.amount, e.currency, e.country))) 
         : 10000;
 
       const getCircleRadius = (amt) => {
@@ -374,14 +402,16 @@ export default function ShareCardModal({
         const cx = getCanvasX(evt.date);
         let activeSalary = sortedSalaries[0].salary;
         let activeCurrency = sortedSalaries[0].currency;
+        let activeCountry = sortedSalaries[0].country;
         for (let i = 0; i < sortedSalaries.length; i++) {
           if ((sortedSalaries[i].date.length === 7 ? `${sortedSalaries[i].date}-01` : sortedSalaries[i].date) <= (evt.date.length === 7 ? `${evt.date}-01` : evt.date)) {
             activeSalary = sortedSalaries[i].salary;
             activeCurrency = sortedSalaries[i].currency;
+            activeCountry = sortedSalaries[i].country;
           }
         }
-        const cy = getCanvasY(convertCurrency(activeSalary, activeCurrency, stats.activeCurrency));
-        const radius = getCircleRadius(convertCurrency(evt.amount, evt.currency, stats.activeCurrency));
+        const cy = getCanvasY(convertValue(activeSalary, activeCurrency, activeCountry));
+        const radius = getCircleRadius(convertValue(evt.amount, evt.currency, evt.country));
 
         ctx.beginPath();
         ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -397,7 +427,7 @@ export default function ShareCardModal({
     }
 
     // 6. Stats Grid at bottom
-    const statBoxLabels = ['Realized Career Earnings', 'Current Reference Base', 'Realized Cash Bonuses', 'Realized Vested Stock'];
+    const statBoxLabels = ['Realized Career Earnings', 'Current Salary Remuneration', 'Realized Cash Bonuses', 'Realized Vested Stock'];
     const statBoxKeys = ['totalRealized', 'currentBase', 'totalBonus', 'totalVest'];
     const statColors = [primaryColor, accentColor, '#10b981', '#a855f7'];
 
@@ -450,7 +480,7 @@ export default function ShareCardModal({
       }
       ctx.fillText(subtext, bX + 20, boxY + 86);
     }
-  }, [theme, showName, redact, salaryEvents, compEvents, startDate, currency, userName]);
+  }, [theme, showName, redact, salaryEvents, compEvents, startDate, currency, userName, pppMode, exchangeRates, pppFactors]);
 
   useEffect(() => {
     if (!isOpen) return;

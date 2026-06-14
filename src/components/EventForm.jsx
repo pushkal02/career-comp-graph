@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { PlusCircle, Trash2, Shield, TrendingUp, Calendar, Tag, Briefcase, Edit3, X, Check, MapPin } from 'lucide-react';
+import { COUNTRIES, getCountryByCurrency } from '../utils/currency';
 
 export default function EventForm({ 
   salaryEvents, 
@@ -63,6 +64,7 @@ export default function EventForm({
   const [salaryVal, setSalaryVal] = useState('100000');
   const [salaryType, setSalaryType] = useState('hike'); // hike, promotion, jobswitch
   const [salaryCurrency, setSalaryCurrency] = useState(currency || 'USD');
+  const [salaryCountry, setSalaryCountry] = useState(() => getCountryByCurrency(currency || 'USD'));
   const [salaryTitle, setSalaryTitle] = useState('');
   const [salaryWorkType, setSalaryWorkType] = useState('Company'); // Company, Freelance, Self-Employed
   const [salaryCompany, setSalaryCompany] = useState('');
@@ -75,6 +77,7 @@ export default function EventForm({
   const [compAmount, setCompAmount] = useState('10000');
   const [compType, setCompType] = useState('bonus'); // bonus, grant, vest
   const [compCurrency, setCompCurrency] = useState(currency || 'USD');
+  const [compCountry, setCompCountry] = useState(() => getCountryByCurrency(currency || 'USD'));
   const [compTitle, setCompTitle] = useState('');
   const [compWorkType, setCompWorkType] = useState('Company'); // Company, Freelance, Self-Employed
   const [compCompany, setCompCompany] = useState('');
@@ -88,6 +91,7 @@ export default function EventForm({
   const [editVal, setEditVal] = useState('');
   const [editType, setEditType] = useState('');
   const [editCurrency, setEditCurrency] = useState('USD');
+  const [editCountry, setEditCountry] = useState('US');
   const [editTitle, setEditTitle] = useState('');
   const [editWorkType, setEditWorkType] = useState('Company');
   const [editCompany, setEditCompany] = useState('');
@@ -111,11 +115,29 @@ export default function EventForm({
   if (currency !== prevDefaultCurrency) {
     setPrevDefaultCurrency(currency);
     setSalaryCurrency(currency || 'USD');
+    setSalaryCountry(getCountryByCurrency(currency || 'USD'));
     setCompCurrency(currency || 'USD');
+    setCompCountry(getCountryByCurrency(currency || 'USD'));
     if (editingEvent && !editingEvent.currency) {
       setEditCurrency(currency || 'USD');
+      setEditCountry(getCountryByCurrency(currency || 'USD'));
     }
   }
+
+  const handleSalaryCurrencyChange = (curr) => {
+    setSalaryCurrency(curr);
+    setSalaryCountry(getCountryByCurrency(curr));
+  };
+
+  const handleCompCurrencyChange = (curr) => {
+    setCompCurrency(curr);
+    setCompCountry(getCountryByCurrency(curr));
+  };
+
+  const handleEditCurrencyChange = (curr) => {
+    setEditCurrency(curr);
+    setEditCountry(getCountryByCurrency(curr));
+  };
 
   const handleSalarySubmit = (e) => {
     e.preventDefault();
@@ -128,7 +150,8 @@ export default function EventForm({
       currency: salaryCurrency,
       title: salaryTitle.trim() || getDefaultSalaryTitle(salaryType),
       company: salaryWorkType === 'Company' ? salaryCompany.trim() || 'Self-Employed' : salaryWorkType,
-      location: salaryLocation.trim() || undefined
+      location: salaryLocation.trim() || undefined,
+      country: salaryCountry
     });
 
     // Reset inputs
@@ -148,7 +171,8 @@ export default function EventForm({
       currency: compCurrency,
       title: compTitle.trim() || getDefaultCompTitle(compType),
       company: compWorkType === 'Company' ? compCompany.trim() || 'Self-Employed' : compWorkType,
-      location: compLocation.trim() || undefined
+      location: compLocation.trim() || undefined,
+      country: compCountry
     });
 
     // Reset inputs
@@ -168,6 +192,7 @@ export default function EventForm({
     setEditVal(valStr);
     setEditType(item.type);
     setEditCurrency(item.currency || currency || 'USD');
+    setEditCountry(item.country || getCountryByCurrency(item.currency || currency || 'USD'));
     setEditTitle(item.title || '');
     setEditLocation(item.location || '');
 
@@ -199,7 +224,8 @@ export default function EventForm({
         currency: editCurrency,
         title: editTitle.trim() || getDefaultSalaryTitle(editType),
         company: finalCompany,
-        location: editLocation.trim() || undefined
+        location: editLocation.trim() || undefined,
+        country: editCountry
       });
     } else {
       onEditCompEvent({
@@ -210,7 +236,8 @@ export default function EventForm({
         currency: editCurrency,
         title: editTitle.trim() || getDefaultCompTitle(editType),
         company: finalCompany,
-        location: editLocation.trim() || undefined
+        location: editLocation.trim() || undefined,
+        country: editCountry
       });
     }
 
@@ -335,7 +362,7 @@ export default function EventForm({
               }}
               onClick={() => setFormType('salary')}
             >
-              <TrendingUp size={14} /> Base Salary
+              <TrendingUp size={14} /> Salary Remuneration
             </button>
             <button
               className="btn"
@@ -392,8 +419,8 @@ export default function EventForm({
               <div className="form-group">
                 <label><Tag size={12} style={{ marginRight: 4 }} /> Event Type</label>
                 <select value={salaryType} onChange={(e) => setSalaryType(e.target.value)}>
-                  <option value="hike">Base Salary Hike</option>
-                  <option value="promotion">Promotion Hike</option>
+                  <option value="hike">Salary Remuneration Hike</option>
+                  <option value="promotion">Promotion Remuneration Hike</option>
                   <option value="jobswitch">Job Switch Increase</option>
                 </select>
               </div>
@@ -404,7 +431,7 @@ export default function EventForm({
                     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.25)', color: 'var(--color-primary)', fontSize: '9px', fontWeight: '800', marginRight: '6px', fontFamily: 'var(--font-mono)', verticalAlign: 'middle', lineHeight: 1 }}>
                       {getCurrencySymbol(salaryCurrency).trim()}
                     </span>
-                    New Annual Base Salary ({getCurrencySymbol(salaryCurrency).trim()})
+                    New Annual Salary Remuneration ({getCurrencySymbol(salaryCurrency).trim()})
                   </label>
                   <input 
                     type="number" 
@@ -416,7 +443,7 @@ export default function EventForm({
                 </div>
                 <div style={{ width: '95px' }}>
                   <label>Currency</label>
-                  <select value={salaryCurrency} onChange={(e) => setSalaryCurrency(e.target.value)} style={{ height: '37px' }}>
+                  <select value={salaryCurrency} onChange={(e) => handleSalaryCurrencyChange(e.target.value)} style={{ height: '37px' }}>
                     <option value="USD">USD ($)</option>
                     <option value="INR">INR (₹)</option>
                     <option value="GBP">GBP (£)</option>
@@ -427,6 +454,28 @@ export default function EventForm({
                     <option value="SGD">SGD (SG$)</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label>Country (For PPP conversion)</label>
+                <select 
+                  value={salaryCountry} 
+                  onChange={(e) => {
+                    const selectedCountry = e.target.value;
+                    setSalaryCountry(selectedCountry);
+                    const found = COUNTRIES.find(c => c.code === selectedCountry);
+                    if (found) {
+                      setSalaryCurrency(found.defaultCurrency);
+                    }
+                  }}
+                  required
+                >
+                  {COUNTRIES.map(c => (
+                    <option key={c.code} value={c.code}>
+                      {c.flag} {c.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="form-group">
@@ -487,7 +536,7 @@ export default function EventForm({
               </div>
 
               <button type="submit" className="btn btn-primary" style={{ marginTop: '0.5rem' }}>
-                <PlusCircle size={18} /> Update Salary
+                <PlusCircle size={18} /> Update Salary Remuneration
               </button>
             </form>
           ) : (
@@ -553,7 +602,7 @@ export default function EventForm({
                 </div>
                 <div style={{ width: '95px' }}>
                   <label>Currency</label>
-                  <select value={compCurrency} onChange={(e) => setCompCurrency(e.target.value)} style={{ height: '37px' }}>
+                  <select value={compCurrency} onChange={(e) => handleCompCurrencyChange(e.target.value)} style={{ height: '37px' }}>
                     <option value="USD">USD ($)</option>
                     <option value="INR">INR (₹)</option>
                     <option value="GBP">GBP (£)</option>
@@ -564,6 +613,28 @@ export default function EventForm({
                     <option value="SGD">SGD (SG$)</option>
                   </select>
                 </div>
+              </div>
+
+              <div className="form-group">
+                <label>Country (For PPP conversion)</label>
+                <select 
+                  value={compCountry} 
+                  onChange={(e) => {
+                    const selectedCountry = e.target.value;
+                    setCompCountry(selectedCountry);
+                    const found = COUNTRIES.find(c => c.code === selectedCountry);
+                    if (found) {
+                      setCompCurrency(found.defaultCurrency);
+                    }
+                  }}
+                  required
+                >
+                  {COUNTRIES.map(c => (
+                    <option key={c.code} value={c.code}>
+                      {c.flag} {c.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="form-group">
@@ -635,7 +706,7 @@ export default function EventForm({
         <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <Edit3 size={15} style={{ color: 'var(--color-primary)' }} />
-            Edit {editingEvent.eventCategory === 'salary' ? 'Base Salary' : 'Payout / Grant'}
+            Edit {editingEvent.eventCategory === 'salary' ? 'Salary Remuneration' : 'Payout / Grant'}
           </h3>
 
           <form onSubmit={handleEditSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -677,8 +748,8 @@ export default function EventForm({
               <div className="form-group">
                 <label><Tag size={12} style={{ marginRight: 4 }} /> Event Type</label>
                 <select value={editType} onChange={(e) => setEditType(e.target.value)}>
-                  <option value="hike">Base Salary Hike</option>
-                  <option value="promotion">Promotion Hike</option>
+                  <option value="hike">Salary Remuneration Hike</option>
+                  <option value="promotion">Promotion Remuneration Hike</option>
                   <option value="jobswitch">Job Switch Increase</option>
                 </select>
               </div>
@@ -699,7 +770,7 @@ export default function EventForm({
                   <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.25)', color: 'var(--color-primary)', fontSize: '9px', fontWeight: '800', marginRight: '6px', fontFamily: 'var(--font-mono)', verticalAlign: 'middle', lineHeight: 1 }}>
                     {getCurrencySymbol(editCurrency).trim()}
                   </span>
-                  {editingEvent.eventCategory === 'salary' ? 'Annual Base Salary' : 'Amount / Value'} ({getCurrencySymbol(editCurrency).trim()})
+                  {editingEvent.eventCategory === 'salary' ? 'Annual Salary Remuneration' : 'Amount / Value'} ({getCurrencySymbol(editCurrency).trim()})
                 </label>
                 <input 
                   type="number" 
@@ -711,7 +782,7 @@ export default function EventForm({
               </div>
               <div style={{ width: '95px' }}>
                 <label>Currency</label>
-                <select value={editCurrency} onChange={(e) => setEditCurrency(e.target.value)} style={{ height: '37px' }}>
+                <select value={editCurrency} onChange={(e) => handleEditCurrencyChange(e.target.value)} style={{ height: '37px' }}>
                   <option value="USD">USD ($)</option>
                   <option value="INR">INR (₹)</option>
                   <option value="GBP">GBP (£)</option>
@@ -722,6 +793,28 @@ export default function EventForm({
                   <option value="SGD">SGD (SG$)</option>
                 </select>
               </div>
+            </div>
+
+            <div className="form-group">
+              <label>Country (For PPP conversion)</label>
+              <select 
+                value={editCountry} 
+                onChange={(e) => {
+                  const selectedCountry = e.target.value;
+                  setEditCountry(selectedCountry);
+                  const found = COUNTRIES.find(c => c.code === selectedCountry);
+                  if (found) {
+                    setEditCurrency(found.defaultCurrency);
+                  }
+                }}
+                required
+              >
+                {COUNTRIES.map(c => (
+                  <option key={c.code} value={c.code}>
+                    {c.flag} {c.name}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div className="form-group">
@@ -824,9 +917,10 @@ export default function EventForm({
                         {item.title}
                       </span>
                     </div>
-                    <div className="manager-item-meta" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${formatDateLabel(item.date)} • ${isSalary ? 'Salary' : 'Amount'}: ${formatCurrency(isSalary ? item.salary : item.amount, item.currency)}${isSalary ? '/yr' : ''} • Employer: ${companyTag}${item.location ? ` • Location: ${item.location}` : ''}`}>
+                    <div className="manager-item-meta" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${formatDateLabel(item.date)} • ${isSalary ? 'Salary Remuneration' : 'Amount'}: ${formatCurrency(isSalary ? item.salary : item.amount, item.currency)}${isSalary ? '/yr' : ''} • Employer: ${companyTag}${item.country ? ` • Country: ${item.country}` : ''}${item.location ? ` • Location: ${item.location}` : ''}`}>
                       {formatDateLabel(item.date)} • <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatCurrency(isSalary ? item.salary : item.amount, item.currency)}</span>
                       {isSalary && ' / yr'} • <strong style={{ color: 'var(--color-primary)' }}>{companyTag}</strong>
+                      {item.country && ` • ${COUNTRIES.find(c => c.code === item.country)?.flag || ''} ${item.country}`}
                       {item.location && ` • 📍 ${item.location}`}
                     </div>
                   </div>

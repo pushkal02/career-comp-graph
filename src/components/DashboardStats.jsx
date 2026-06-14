@@ -1,12 +1,28 @@
-
 import { DollarSign, Award, Percent, Layers, ShieldCheck } from 'lucide-react';
-import { convertCurrency } from '../utils/currency';
+import { convertCurrency, convertToPPP } from '../utils/currency';
 
-export default function DashboardStats({ salaryEvents, compEvents, startDate, currency }) {
+export default function DashboardStats({ 
+  salaryEvents, 
+  compEvents, 
+  startDate, 
+  currency,
+  pppMode,
+  exchangeRates,
+  pppFactors
+}) {
   const baselineDate = startDate || "2024-01";
-  // Format currency
-  // Format currency dynamically based on selected option
+  
+  // Format currency dynamically based on selected option and PPP Mode
   const formatCurrency = (val) => {
+    if (pppMode) {
+      const formatted = new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        maximumFractionDigits: 0
+      }).format(val);
+      return formatted.replace('$', 'PPP $');
+    }
+
     const activeCurrency = currency || 'USD';
     const getLocaleForCurrency = (curr) => {
       switch (curr) {
@@ -25,6 +41,15 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
     }).format(val);
   };
 
+  // Helper to convert event amount to local display or PPP USD
+  const convertValue = (amount, eventCurrency, countryCode) => {
+    if (pppMode) {
+      return convertToPPP(amount, eventCurrency, countryCode, exchangeRates, pppFactors);
+    } else {
+      return convertCurrency(amount, eventCurrency, currency, exchangeRates);
+    }
+  };
+
   // Calculate chronological difference in years (supporting day precision via UTC month-based difference)
   const getYearDiff = (date1, date2) => {
     const d1 = new Date(date1.length === 7 ? `${date1}-01` : date1);
@@ -41,7 +66,6 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
     return totalMonths / 12;
   };
 
-
   const normalizeDate = (d) => (d && d.length === 7) ? `${d}-01` : d;
 
   // 1. Calculate current salary (most recent salary event)
@@ -51,7 +75,11 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
     return normA.localeCompare(normB);
   });
   const currentSalary = sortedSalaryEvents.length > 0 
-    ? convertCurrency(sortedSalaryEvents[sortedSalaryEvents.length - 1].salary, sortedSalaryEvents[sortedSalaryEvents.length - 1].currency, currency) 
+    ? convertValue(
+        sortedSalaryEvents[sortedSalaryEvents.length - 1].salary, 
+        sortedSalaryEvents[sortedSalaryEvents.length - 1].currency,
+        sortedSalaryEvents[sortedSalaryEvents.length - 1].country
+      ) 
     : 0;
 
   // Get cutoff date representing the start of the current month (i.e. end of the last completed month)
@@ -82,7 +110,7 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
       
       const durationYears = getYearDiff(segmentStart, segmentEnd);
       if (durationYears > 0) {
-        const segmentSalaryInDisplay = convertCurrency(currentEvent.salary, currentEvent.currency, currency);
+        const segmentSalaryInDisplay = convertValue(currentEvent.salary, currentEvent.currency, currentEvent.country);
         cumulativeBaseEarned += segmentSalaryInDisplay * durationYears;
       }
     }
@@ -91,24 +119,24 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
   // 3. Sum of bonus, grant, and vest (realized options filtered up to the last completed month)
   const totalBonus = compEvents
     .filter(e => e.type === 'bonus' && normalizeDate(e.date) < normCutoff)
-    .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, currency), 0);
+    .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
   const totalGrant = compEvents
     .filter(e => e.type === 'grant')
-    .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, currency), 0);
+    .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
   const totalVest = compEvents
     .filter(e => e.type === 'vest' && normalizeDate(e.date) < normCutoff)
-    .reduce((sum, e) => sum + convertCurrency(Number(e.amount), e.currency, currency), 0);
+    .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
   // 4. Realized Cumulative Compensation = Base Salary Earned + Bonus + Vests
   const totalRealizedComp = cumulativeBaseEarned + totalBonus + totalVest;
 
   const stats = [
     {
-      label: "Current Base Salary",
+      label: "Current Salary Remuneration",
       value: formatCurrency(currentSalary),
-      subtext: "Annual Reference Salary rate",
+      subtext: pppMode ? "Annual Reference Salary Remuneration (PPP adjusted)" : "Annual Reference Salary Remuneration rate",
       icon: <DollarSign size={20} style={{ color: 'var(--color-base)' }} />,
       className: "base"
     },
@@ -136,7 +164,9 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
     {
       label: "Realized Career Earnings",
       value: formatCurrency(totalRealizedComp),
-      subtext: "Cumulative base + bonuses + vested stock (up to start of current month)",
+      subtext: pppMode 
+        ? "Cumulative remuneration + bonuses + vested stock (PPP adjusted)" 
+        : "Cumulative base + bonuses + vested stock (up to start of current month)",
       icon: <Percent size={20} style={{ color: 'var(--color-primary)' }} />,
       className: "total"
     }
@@ -157,3 +187,4 @@ export default function DashboardStats({ salaryEvents, compEvents, startDate, cu
     </div>
   );
 }
+
