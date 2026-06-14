@@ -22,6 +22,7 @@ export default function CompChart({
   // Graph filters state
   const [filters, setFilters] = useState({
     salaryLine: true,
+    netSalaryLine: true,
     hike: true,
     promotion: true,
     jobswitch: true,
@@ -223,7 +224,9 @@ export default function CompChart({
         company: e.company || 'Self-Employed',
         country: e.country || '',
         location: e.location || '',
-        title: e.title || ''
+        title: e.title || '',
+        monthlyGross: e.salary / 12,
+        monthlyNet: e.monthlyNetSalary || ''
       })),
       ...compEvents.map(e => ({
         date: e.date,
@@ -235,7 +238,9 @@ export default function CompChart({
         company: e.company || 'Self-Employed',
         country: e.country || '',
         location: e.location || '',
-        title: e.title || ''
+        title: e.title || '',
+        monthlyGross: '',
+        monthlyNet: ''
       }))
     ].sort((a, b) => {
       const normA = a.date.length === 7 ? `${a.date}-01` : a.date;
@@ -243,7 +248,7 @@ export default function CompChart({
       return normA.localeCompare(normB);
     });
 
-    const headers = ['Date', 'Category', 'Type', 'Original Amount', 'Original Currency', 'Converted Amount', 'Converted Currency', 'Employer', 'Country', 'Location', 'Title'];
+    const headers = ['Date', 'Category', 'Type', 'Original Amount', 'Original Currency', 'Converted Amount', 'Converted Currency', 'Monthly Gross', 'Monthly Net', 'Employer', 'Country', 'Location', 'Title'];
     const rows = allEvents.map(e => [
       escapeCSV(e.date),
       escapeCSV(e.category),
@@ -252,6 +257,8 @@ export default function CompChart({
       escapeCSV(e.origCurr),
       e.convVal,
       escapeCSV(pppMode ? 'USD (PPP)' : currency),
+      e.monthlyGross,
+      e.monthlyNet,
       escapeCSV(e.company),
       escapeCSV(e.country),
       escapeCSV(e.location),
@@ -441,34 +448,60 @@ export default function CompChart({
   // Generate salary step-line path
   let salaryPathD = '';
   let salaryAreaD = '';
+  let netSalaryPathD = '';
+  let netSalaryAreaD = '';
   const salarySegments = [];
   
   if (sortedSalaryEvents.length > 0) {
     const startX = padding.left;
     const startY = getY(convertValue(sortedSalaryEvents[0].salary, sortedSalaryEvents[0].currency, sortedSalaryEvents[0].country));
+    
+    // Net salary calculation
+    const firstEvent = sortedSalaryEvents[0];
+    const firstNetSalary = firstEvent.monthlyNetSalary !== undefined && firstEvent.monthlyNetSalary !== null
+      ? firstEvent.monthlyNetSalary * 12
+      : firstEvent.salary;
+    const startNetY = getY(convertValue(firstNetSalary, firstEvent.currency, firstEvent.country));
+
     const bottomY = dimensions.height - padding.bottom;
     const endX = dimensions.width - padding.right;
     
     salaryPathD = `M ${startX} ${startY}`;
     salaryAreaD = `M ${startX} ${bottomY} L ${startX} ${startY}`;
+
+    netSalaryPathD = `M ${startX} ${startNetY}`;
+    netSalaryAreaD = `M ${startX} ${bottomY} L ${startX} ${startNetY}`;
     
     let lastY = startY;
+    let lastNetY = startNetY;
     
     for (let i = 1; i < sortedSalaryEvents.length; i++) {
       const event = sortedSalaryEvents[i];
       const eventX = getX(event.date);
       const eventY = getY(convertValue(event.salary, event.currency, event.country));
+
+      const eventNetSalary = event.monthlyNetSalary !== undefined && event.monthlyNetSalary !== null
+        ? event.monthlyNetSalary * 12
+        : event.salary;
+      const eventNetY = getY(convertValue(eventNetSalary, event.currency, event.country));
       
       // Step horizontal, then vertical
       salaryPathD += ` L ${eventX} ${lastY} L ${eventX} ${eventY}`;
       salaryAreaD += ` L ${eventX} ${lastY} L ${eventX} ${eventY}`;
+
+      netSalaryPathD += ` L ${eventX} ${lastNetY} L ${eventX} ${eventNetY}`;
+      netSalaryAreaD += ` L ${eventX} ${lastNetY} L ${eventX} ${eventNetY}`;
       
       lastY = eventY;
+      lastNetY = eventNetY;
     }
     
     // Draw to end of chart
     salaryPathD += ` L ${endX} ${lastY}`;
     salaryAreaD += ` L ${endX} ${lastY} L ${endX} ${bottomY} Z`;
+
+    netSalaryPathD += ` L ${endX} ${lastNetY}`;
+    netSalaryAreaD += ` L ${endX} ${lastNetY} L ${endX} ${bottomY} Z`;
 
     // Compute segments for text labels
     for (let i = 0; i < sortedSalaryEvents.length; i++) {
@@ -536,10 +569,14 @@ export default function CompChart({
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.75rem' }}>
           {/* Legends */}
-          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', fontWeight: 600 }}>
+          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', fontWeight: 600, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--color-base)' }}></span>
-              <span style={{ color: 'var(--text-secondary)' }}>Base Salary</span>
+              <span style={{ color: 'var(--text-secondary)' }}>Gross Salary</span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+              <span style={{ width: '12px', height: '0px', borderTop: '2.5px dashed #10b981' }}></span>
+              <span style={{ color: 'var(--text-secondary)' }}>Net Take-Home</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
               <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--color-bonus)' }}></span>
@@ -623,7 +660,8 @@ export default function CompChart({
           Filter Timeline:
         </span>
         {[
-          { key: 'salaryLine', label: 'Salary Line', color: 'var(--color-base)' },
+          { key: 'salaryLine', label: 'Gross Salary Line', color: 'var(--color-base)' },
+          { key: 'netSalaryLine', label: 'Net Take-Home Line', color: '#10b981' },
           { key: 'hike', label: 'Salary Hikes', color: 'var(--color-hike)' },
           { key: 'promotion', label: 'Promotions', color: 'var(--color-promotion)' },
           { key: 'jobswitch', label: 'Job Switches', color: 'var(--color-switch)' },
@@ -632,7 +670,7 @@ export default function CompChart({
           { key: 'vest', label: 'Vesting', color: 'var(--color-vest)' }
         ].map((filter) => {
           const isActive = filters[filter.key];
-          const rgbString = filter.key === 'salaryLine' ? '56, 189, 248' : filter.key === 'hike' ? '20, 184, 166' : filter.key === 'promotion' ? '236, 72, 153' : filter.key === 'jobswitch' ? '59, 130, 246' : filter.key === 'bonus' ? '16, 185, 129' : filter.key === 'grant' ? '245, 158, 11' : '168, 85, 247';
+          const rgbString = filter.key === 'salaryLine' ? '56, 189, 248' : filter.key === 'netSalaryLine' ? '16, 185, 129' : filter.key === 'hike' ? '20, 184, 166' : filter.key === 'promotion' ? '236, 72, 153' : filter.key === 'jobswitch' ? '59, 130, 246' : filter.key === 'bonus' ? '16, 185, 129' : filter.key === 'grant' ? '245, 158, 11' : '168, 85, 247';
           return (
             <button
               key={filter.key}
@@ -680,6 +718,10 @@ export default function CompChart({
               <linearGradient id="salary-gradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="var(--color-base)" stopOpacity="0.4" />
                 <stop offset="100%" stopColor="var(--color-base)" stopOpacity="0.0" />
+              </linearGradient>
+              <linearGradient id="net-salary-gradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
+                <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
               </linearGradient>
             </defs>
 
@@ -730,6 +772,11 @@ export default function CompChart({
             ))}
 
             {/* Salary Area Shadow */}
+            {/* Net Salary Step Line & Area */}
+            {filters.netSalaryLine && netSalaryAreaD && <path className="chart-line-net-shadow" d={netSalaryAreaD} />}
+            {filters.netSalaryLine && netSalaryPathD && <path className="chart-line-net-salary" d={netSalaryPathD} />}
+
+            {/* Salary Area Shading */}
             {filters.salaryLine && salaryAreaD && <path className="chart-line-shadow" d={salaryAreaD} />}
 
             {/* Salary Step Line */}
@@ -801,25 +848,45 @@ export default function CompChart({
                    style={{ '--node-color': color }}
                    transform={`translate(${x}, ${y})`}
                    onMouseEnter={() => {
-                     // Percentage change calculation
-                     const prevSalary = convertValue(sortedSalaryEvents[idx - 1].salary, sortedSalaryEvents[idx - 1].currency, sortedSalaryEvents[idx - 1].country);
-                     const currSalary = convertValue(evt.salary, evt.currency, evt.country);
-                     const pctDiff = prevSalary !== 0 ? ((currSalary - prevSalary) / prevSalary) * 100 : 0;
-                     
-                     setHoveredItem({
-                       x: x,
-                       y: y - 10,
-                       title: evt.title,
-                       value: `${formatFullCurrency(currSalary)}/yr`,
-                       subValue: pctDiff > 0 ? `+${pctDiff.toFixed(0)}% change` : `${pctDiff.toFixed(0)}% change`,
-                       date: formatDateLabel(evt.date),
-                       type: evt.type,
-                       company: evt.company || 'Self-Employed',
-                       country: evt.country,
-                       location: evt.location,
-                       category: 'salary'
-                     });
-                   }}
+                      // Percentage change calculation
+                      const prevEvent = sortedSalaryEvents[idx - 1];
+                      const prevSalary = convertValue(prevEvent.salary, prevEvent.currency, prevEvent.country);
+                      const currSalary = convertValue(evt.salary, evt.currency, evt.country);
+                      const pctDiff = prevSalary !== 0 ? ((currSalary - prevSalary) / prevSalary) * 100 : 0;
+                      
+                      // Calculate net salaries (annualized)
+                      const prevNetVal = prevEvent.monthlyNetSalary !== undefined && prevEvent.monthlyNetSalary !== null
+                        ? prevEvent.monthlyNetSalary * 12
+                        : prevEvent.salary;
+                      const currNetVal = evt.monthlyNetSalary !== undefined && evt.monthlyNetSalary !== null
+                        ? evt.monthlyNetSalary * 12
+                        : evt.salary;
+                      
+                      const prevNetSalary = convertValue(prevNetVal, prevEvent.currency, prevEvent.country);
+                      const currNetSalary = convertValue(currNetVal, evt.currency, evt.country);
+                      const netHikeDiff = (currNetSalary - prevNetSalary) / 12;
+                      const pctNetDiff = prevNetSalary !== 0 ? ((currNetSalary - prevNetSalary) / prevNetSalary) * 100 : 0;
+
+                      setHoveredItem({
+                        x: x,
+                        y: y - 10,
+                        title: evt.title,
+                        value: `${formatFullCurrency(currSalary)}/yr`,
+                        subValue: pctDiff > 0 ? `+${pctDiff.toFixed(0)}% gross change` : `${pctDiff.toFixed(0)}% gross change`,
+                        date: formatDateLabel(evt.date),
+                        type: evt.type,
+                        company: evt.company || 'Self-Employed',
+                        country: evt.country,
+                        location: evt.location,
+                        category: 'salary',
+                        convertedGross: currSalary / 12,
+                        convertedNet: evt.monthlyNetSalary !== undefined && evt.monthlyNetSalary !== null 
+                          ? convertValue(evt.monthlyNetSalary, evt.currency, evt.country) 
+                          : convertValue(evt.salary / 12, evt.currency, evt.country),
+                        netHikeDiff: netHikeDiff,
+                        pctNetDiff: pctNetDiff
+                      });
+                    }}
                    onMouseLeave={() => setHoveredItem(null)}
                 >
                   {/* Glowing background */}
@@ -1068,6 +1135,19 @@ export default function CompChart({
               </span>
             </div>
             <div className="tooltip-value">{hoveredItem.value}</div>
+            {hoveredItem.category === 'salary' && hoveredItem.convertedGross !== undefined && (
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem', marginBottom: '0.1rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                <div>Monthly Gross: <strong style={{ color: 'var(--text-primary)' }}>{formatFullCurrency(hoveredItem.convertedGross)}</strong></div>
+                {hoveredItem.convertedNet !== undefined && (
+                  <div>Monthly Net: <strong style={{ color: '#10b981' }}>{formatFullCurrency(hoveredItem.convertedNet)}</strong></div>
+                )}
+                {hoveredItem.netHikeDiff !== undefined && (
+                  <div style={{ marginTop: '0.15rem', color: 'var(--text-secondary)', fontSize: '0.72rem' }}>
+                    Monthly Net Hike: <strong style={{ color: '#10b981' }}>{hoveredItem.netHikeDiff >= 0 ? '+' : ''}{formatFullCurrency(hoveredItem.netHikeDiff)}</strong> ({hoveredItem.pctNetDiff >= 0 ? '+' : ''}{hoveredItem.pctNetDiff.toFixed(0)}%)
+                  </div>
+                )}
+              </div>
+            )}
             {hoveredItem.company && (
               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem', marginBottom: '0.1rem' }}>
                 Employer: <strong style={{ color: 'var(--color-primary)' }}>{hoveredItem.company}</strong>

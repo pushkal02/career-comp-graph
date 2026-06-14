@@ -69,6 +69,7 @@ export default function EventForm({
   const [salaryWorkType, setSalaryWorkType] = useState('Company'); // Company, Freelance, Self-Employed
   const [salaryCompany, setSalaryCompany] = useState('');
   const [salaryLocation, setSalaryLocation] = useState('');
+  const [salaryNetVal, setSalaryNetVal] = useState('');
 
   // Comp form state
   const [compYear, setCompYear] = useState(() => (startDate || '2024-01').split('-')[0]);
@@ -96,6 +97,7 @@ export default function EventForm({
   const [editWorkType, setEditWorkType] = useState('Company');
   const [editCompany, setEditCompany] = useState('');
   const [editLocation, setEditLocation] = useState('');
+  const [editNetVal, setEditNetVal] = useState('');
 
   // Sync date inputs when baseline changes (during render)
   const [prevStartDate, setPrevStartDate] = useState(startDate);
@@ -151,13 +153,15 @@ export default function EventForm({
       title: salaryTitle.trim() || getDefaultSalaryTitle(salaryType),
       company: salaryWorkType === 'Company' ? salaryCompany.trim() || 'Self-Employed' : salaryWorkType,
       location: salaryLocation.trim() || undefined,
-      country: salaryCountry
+      country: salaryCountry,
+      monthlyNetSalary: salaryNetVal ? Number(salaryNetVal) : undefined
     });
 
     // Reset inputs
     setSalaryTitle('');
     setSalaryCompany('');
     setSalaryLocation('');
+    setSalaryNetVal('');
   };
 
   const handleCompSubmit = (e) => {
@@ -195,6 +199,7 @@ export default function EventForm({
     setEditCountry(item.country || getCountryByCurrency(item.currency || currency || 'USD'));
     setEditTitle(item.title || '');
     setEditLocation(item.location || '');
+    setEditNetVal(item.monthlyNetSalary ? item.monthlyNetSalary.toString() : '');
 
     const itemCompany = item.company || 'Self-Employed';
     if (['Freelance', 'Self-Employed'].includes(itemCompany)) {
@@ -225,7 +230,8 @@ export default function EventForm({
         title: editTitle.trim() || getDefaultSalaryTitle(editType),
         company: finalCompany,
         location: editLocation.trim() || undefined,
-        country: editCountry
+        country: editCountry,
+        monthlyNetSalary: editNetVal ? Number(editNetVal) : undefined
       });
     } else {
       onEditCompEvent({
@@ -243,12 +249,14 @@ export default function EventForm({
 
     setEditingEvent(null);
     setEditLocation('');
+    setEditNetVal('');
     setActiveTab('manage');
   };
 
   const cancelEdit = () => {
     setEditingEvent(null);
     setEditLocation('');
+    setEditNetVal('');
     setActiveTab('manage');
   };
 
@@ -453,6 +461,28 @@ export default function EventForm({
                     <option value="AUD">AUD (A$)</option>
                     <option value="SGD">SGD (SG$)</option>
                   </select>
+                </div>
+              </div>
+
+              <div className="form-group" style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ flex: 1 }}>
+                  <label>Monthly Gross ({getCurrencySymbol(salaryCurrency).trim()}) (Read-Only)</label>
+                  <input 
+                    type="text"
+                    value={salaryVal && !isNaN(salaryVal) ? (Number(salaryVal) / 12).toFixed(2) : '0.00'}
+                    readOnly
+                    style={{ background: 'rgba(255,255,255,0.02)', color: 'var(--text-secondary)', cursor: 'not-allowed', borderStyle: 'dashed' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label>Monthly Net ({getCurrencySymbol(salaryCurrency).trim()}) (Optional)</label>
+                  <input 
+                    type="number"
+                    step="any"
+                    placeholder="Take-home after PF & tax"
+                    value={salaryNetVal}
+                    onChange={(e) => setSalaryNetVal(e.target.value)}
+                  />
                 </div>
               </div>
 
@@ -795,6 +825,30 @@ export default function EventForm({
               </div>
             </div>
 
+            {editingEvent.eventCategory === 'salary' && (
+              <div className="form-group" style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ flex: 1 }}>
+                  <label>Monthly Gross ({getCurrencySymbol(editCurrency).trim()}) (Read-Only)</label>
+                  <input 
+                    type="text"
+                    value={editVal && !isNaN(editVal) ? (Number(editVal) / 12).toFixed(2) : '0.00'}
+                    readOnly
+                    style={{ background: 'rgba(255,255,255,0.02)', color: 'var(--text-secondary)', cursor: 'not-allowed', borderStyle: 'dashed' }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <label>Monthly Net ({getCurrencySymbol(editCurrency).trim()}) (Optional)</label>
+                  <input 
+                    type="number"
+                    step="any"
+                    placeholder="Take-home after PF & tax"
+                    value={editNetVal}
+                    onChange={(e) => setEditNetVal(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="form-group">
               <label>Country (For PPP conversion)</label>
               <select 
@@ -917,9 +971,10 @@ export default function EventForm({
                         {item.title}
                       </span>
                     </div>
-                    <div className="manager-item-meta" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${formatDateLabel(item.date)} • ${isSalary ? 'Salary Remuneration' : 'Amount'}: ${formatCurrency(isSalary ? item.salary : item.amount, item.currency)}${isSalary ? '/yr' : ''} • Employer: ${companyTag}${item.country ? ` • Country: ${item.country}` : ''}${item.location ? ` • Location: ${item.location}` : ''}`}>
+                    <div className="manager-item-meta" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${formatDateLabel(item.date)} • ${isSalary ? 'Salary Remuneration' : 'Amount'}: ${formatCurrency(isSalary ? item.salary : item.amount, item.currency)}${isSalary ? '/yr' : ''}${isSalary ? ` (Gross: ${formatCurrency(item.salary / 12, item.currency)}/mo${item.monthlyNetSalary ? `, Net: ${formatCurrency(item.monthlyNetSalary, item.currency)}/mo` : ''})` : ''} • Employer: ${companyTag}${item.country ? ` • Country: ${item.country}` : ''}${item.location ? ` • Location: ${item.location}` : ''}`}>
                       {formatDateLabel(item.date)} • <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatCurrency(isSalary ? item.salary : item.amount, item.currency)}</span>
                       {isSalary && ' / yr'} • <strong style={{ color: 'var(--color-primary)' }}>{companyTag}</strong>
+                      {isSalary && ` (Gross: ${formatCurrency(item.salary / 12, item.currency)}/mo${item.monthlyNetSalary ? `, Net: ${formatCurrency(item.monthlyNetSalary, item.currency)}/mo` : ''})`}
                       {item.country && ` • ${COUNTRIES.find(c => c.code === item.country)?.flag || ''} ${item.country}`}
                       {item.location && ` • 📍 ${item.location}`}
                     </div>
