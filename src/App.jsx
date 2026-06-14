@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react';
 import CompChart from './components/CompChart';
 import EventForm from './components/EventForm';
 import DashboardStats from './components/DashboardStats';
-import { Sparkles, Sun, Moon } from 'lucide-react';
+import { Sparkles, Sun, Moon, X } from 'lucide-react';
 import ShareCardModal from './components/ShareCardModal';
-import { EXCHANGE_RATES, DEFAULT_PPP_FACTORS } from './utils/currency';
+import { EXCHANGE_RATES, DEFAULT_PPP_FACTORS, COUNTRIES } from './utils/currency';
 
 const getInitialState = () => {
   const savedTheme = localStorage.getItem('comp_graph_theme') || 'dark';
@@ -79,6 +79,8 @@ export default function App() {
   const [userName, setUserName] = useState(() => localStorage.getItem('comp_graph_user_name') || '');
   const [showUserModal, setShowUserModal] = useState(() => !localStorage.getItem('comp_graph_user_name'));
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showRatesModal, setShowRatesModal] = useState(false);
+  const [showPppModal, setShowPppModal] = useState(false);
 
   const [modalName, setModalName] = useState(userName);
 
@@ -461,6 +463,44 @@ export default function App() {
 
           <div className="preset-selector" style={{ minWidth: 'auto' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              Reference
+            </span>
+            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.25rem', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => setShowRatesModal(true)}
+                className="preset-btn"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '35px',
+                  padding: '0 0.85rem',
+                  fontWeight: 600
+                }}
+                title="View active exchange rates relative to USD"
+              >
+                💱 Exchange Rates
+              </button>
+              <button
+                onClick={() => setShowPppModal(true)}
+                className="preset-btn"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '35px',
+                  padding: '0 0.85rem',
+                  fontWeight: 600
+                }}
+                title="View World Bank PPP conversion factors"
+              >
+                📊 PPP Factors
+              </button>
+            </div>
+          </div>
+
+          <div className="preset-selector" style={{ minWidth: 'auto' }}>
+            <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
               Actions
             </span>
             <button
@@ -547,6 +587,88 @@ export default function App() {
         exchangeRates={exchangeRates}
         pppFactors={pppFactors}
       />
+
+      {/* Nominal Exchange Rates Modal */}
+      {showRatesModal && (
+        <div className="modal-overlay animate-fade-in">
+          <div className="modal-content size-md glass-panel animate-fade-in" style={{ position: 'relative' }}>
+            <button 
+              onClick={() => setShowRatesModal(false)}
+              style={{ position: 'absolute', top: '1.25rem', right: '1.25rem', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+              title="Close"
+            >
+              <X size={18} />
+            </button>
+
+            <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', fontWeight: '700', fontSize: '1.25rem', color: 'var(--text-primary)' }}>
+              <span>💱</span> Active Nominal Exchange Rates
+            </h2>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div>
+                <h3 style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--color-primary)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <span>💵</span> Exchange Rates (Relative to 1 USD)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', gap: '0.5rem' }}>
+                  {Object.entries(exchangeRates).map(([curr, rate]) => (
+                    <div key={curr} style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.8rem', textAlign: 'center' }}>
+                      <div style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{curr}</div>
+                      <div style={{ color: 'var(--text-primary)', marginTop: '0.15rem', fontWeight: '700' }}>{Number(rate).toFixed(2)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '1.75rem', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
+              Rates are fetched and cached daily according to your cache policy.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* World Bank PPP Factors Modal */}
+      {showPppModal && (
+        <div className="modal-overlay animate-fade-in">
+          <div className="modal-content size-md glass-panel animate-fade-in" style={{ position: 'relative' }}>
+            <button 
+              onClick={() => setShowPppModal(false)}
+              style={{ position: 'absolute', top: '1.25rem', right: '1.25rem', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
+              title="Close"
+            >
+              <X size={18} />
+            </button>
+
+            <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem', fontWeight: '700', fontSize: '1.25rem', color: 'var(--text-primary)' }}>
+              <span>📊</span> World Bank PPP Factors Reference
+            </h2>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div>
+                <h3 style={{ fontSize: '0.9rem', fontWeight: '600', color: 'var(--color-primary)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <span>📈</span> World Bank PPP Factors (LCU per PPP $)
+                </h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '0.5rem' }}>
+                  {COUNTRIES.map(c => (
+                    <div key={c.code} style={{ background: 'rgba(255, 255, 255, 0.03)', padding: '0.4rem 0.6rem', borderRadius: '6px', border: '1px solid var(--border-color)', fontSize: '0.8rem', textAlign: 'center' }}>
+                      <div style={{ color: 'var(--text-secondary)', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
+                        <span>{c.flag}</span> <span>{c.code}</span>
+                      </div>
+                      <div style={{ color: 'var(--text-primary)', marginTop: '0.15rem', fontWeight: '700' }}>
+                        {pppFactors[c.code] ? Number(pppFactors[c.code]).toFixed(3) : DEFAULT_PPP_FACTORS[c.code]}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ marginTop: '1.75rem', fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', borderTop: '1px solid var(--border-color)', paddingTop: '0.75rem' }}>
+              PPP Factors are cached dynamically according to your cache policy.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -499,15 +499,10 @@ export default function ShareCardModal({
   if (!isOpen) return null;
 
   return (
-    <div className="modal-overlay" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0, 0, 0, 0.85)' }}>
+    <div className="modal-overlay" style={{ backgroundColor: 'rgba(0, 0, 0, 0.85)' }}>
       <div 
-        className="modal-content glass-panel animate-fade-in" 
+        className="modal-content size-lg glass-panel animate-fade-in" 
         style={{ 
-          width: '95%', 
-          maxWidth: '960px', 
-          maxHeight: '90vh', 
-          overflowY: 'auto', 
-          padding: '2rem', 
           display: 'grid', 
           gridTemplateColumns: '1fr', 
           gap: '2rem' 
