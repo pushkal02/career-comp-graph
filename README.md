@@ -22,10 +22,11 @@ Instead of traditional, rigid chart templates, CompGraph uses a **custom high-fi
 * Large circles display short-hand value tags (e.g., `$15k`, `$80k`) for at-a-glance scanning.
 * **Concentric Doughnut Rings**: If multiple events (e.g., RSU vesting and a cash bonus) land on the exact same month, the larger event renders as a clean, hollow **doughnut ring** surrounding the smaller event's filled circle. This keeps each event individually hoverable and matches area proportionality mathematically ($R_{outer} = \sqrt{R_{inner}^2 + R_{base}^2}$).
 
-### 3. Personalization & Profile Modal
-* **Onboarding Prompt**: Implemented a glassmorphic startup overlay modal prompting for your Full Name if it is not stored in browser cache. Explicitly states and guarantees that all input data is stored 100% client-side in your local browser and never sent to a backend. **No email address or personal credentials are ever requested**.
-* **Personalized Header**: Greets the user dynamically (e.g., *"Pushkal Pandey's CompGraph"*) in the title bar.
-* **Profile Editing**: Quick-link to edit your profile name at any time, instantly updating dashboard labels and storage values.
+### 3. Secure Accounts, Authentication & Database Persistence
+* **Multi-User Registration & Login**: Set up a personalized profile to secure your career timeline.
+* **Double Cryptographic Password Hashing**: Plain-text passwords are **never** sent over the network. CompGraph uses native client-side SHA-256 pre-hashing to send a secure `passwordHash` fingerprint to the server, which then hashes this digest a second time using `bcryptjs` (10 rounds) for database storage. This prevents raw passwords from appearing in the browser's Network request payloads.
+* **30-Day Session Persistence**: Access is authenticated using signed JSON Web Tokens (JWT) stored locally, persisting your session for exactly 30 days before requiring re-authentication.
+* **One-Click Local Storage Migration**: If you worked as a guest in offline mode, you can instantly upload and migrate your local browser timeline entries into your new database account upon signing up.
 
 ### 4. Smart Realized Earnings Metrics
 * Integrates the area under the step-line from your configured timeline start month up to the end of the **last completed calendar month** (dynamically derived relative to the current date) to compute the exact **Cumulative Base Salary Earned**.
@@ -51,16 +52,16 @@ Instead of traditional, rigid chart templates, CompGraph uses a **custom high-fi
 * **Metadata list**: Side-by-side Gross and Net salaries are listed in the Manage tab timeline list next to the annual milestones.
 
 ### 7. Day & Night Theme Selector
-* Switch between a glowing dark-mode interface and a clean, high-contrast light-mode layout.
+* Switch between a glowing dark-mode interface, a clean light-mode layout, or a **System Default** setting that synchronizes with your device theme.
 * Adjusts all CSS design variables, form inputs, tooltips, chart grids, dropdown select menus, and base colors dynamically.
 * Automatically stores your theme choice in local storage to preserve settings on reload.
 
-### 8. Graph Export & Data Backups
-* **High-Resolution PNG Download**: Render and save the career progression SVG chart directly as a high-quality PNG image to share or insert into documents. The active theme styling is automatically preserved in the export.
-* **Chronological CSV Export**: Export your complete progression data to a clean CSV spreadsheet, mapping columns like Date, Category, Type, Original/Converted values, Monthly Gross, Monthly Net, Employer, Country, and Location.
-* **Persistent Local Storage**: Timeline data is saved in your browser's persistent local storage with no expiration date.
-* **Backup Export & Import**: Displays helpful recommendation notifications advising users to periodically **Export JSON** to keep offline backups. Click **Import JSON** to load a backup file (via the HTML5 `FileReader` API), validate the content, and restore your complete timeline and profile settings instantly.
-* **Clean Sandbox State**: Launches into a completely clean, empty sandbox graph state with no preset baseline salary. All entries can be edited, deleted, or cleared.
+### 8. Interactive Onboarding & Data Importers (CSV, JSON & Guest Data)
+* **Onboarding Overlay Panel**: When a user logs in with an empty timeline, resets their data, or creates a new account, a visual setup card presents quick-import options.
+* **Pure Client-Side CSV Importer**: Upload a CSV spreadsheet containing your milestones. A custom client-side RFC 4180 parser maps and loads your events dynamically.
+* **JSON Backup Export & Import**: Export/Import JSON backups to restore complete timelines, currencies, starting dates, and profile configurations.
+* **Direct Database Operations**: Additions, edits, and deletions are saved directly to the database via relational endpoints.
+* **High-Resolution PNG Download**: Save the career progression SVG chart directly as a high-quality PNG image preserving active theme settings.
 
 ---
 
@@ -196,6 +197,24 @@ interface CompEvent {
   location?: string; // Optional physical location
 }
 ```
+
+---
+
+## 🔒 Security Architecture & Disclosure: What Can Be Revealed?
+
+CompGraph is built with a strict "privacy-first" model to isolate credentials and protect your data. If a compromise occurs, here is what can and cannot be revealed:
+
+### 1. In-Transit Sniffing (Man-in-the-Middle)
+* **Protected**: Your **plaintext password is completely secure**. Eavesdroppers only see the one-way SHA-256 fingerprint (`passwordHash`). They cannot reverse it to obtain your raw password, protecting you if you reuse it on other sites.
+* **Exposed**: The `passwordHash` transit key itself. Since the backend verifies this hash directly, an eavesdropper could capture and replay it to log in. *Deploy with HTTPS to prevent this.*
+
+### 2. Database Leak (SQLite / PostgreSQL Compromise)
+* **Protected**: Both your **plaintext password** and your **transit SHA-256 hash** are completely secure. The database stores `bcrypt(SHA-256(password))`. Attacking this requires reversing bcrypt, which is protected by a work factor of 10 and unique random salts, rendering rainbow table attacks useless.
+* **Exposed**: Your username, display name, settings (theme, currency, start date), and all salary and compensation milestone history.
+
+### 3. Active Session Compromise (XSS / Browser Storage Leak)
+* **Protected**: Your plaintext password and transit hash are never stored on the client.
+* **Exposed**: Your active JWT session token (`comp_graph_token`), which would allow an attacker to read/modify your career trajectory for the remainder of its 30-day lifetime.
 
 ---
 

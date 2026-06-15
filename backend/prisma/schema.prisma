@@ -1,0 +1,56 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id           String        @id @default(uuid())
+  username     String        @unique
+  email        String        @unique
+  passwordHash String
+  name         String
+  startDate    String        @default("2024-01")
+  currency     String        @default("USD")
+  theme        String        @default("system")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  salaryEvents SalaryEvent[]
+  compEvents   CompEvent[]
+}
+
+model SalaryEvent {
+  id               String   @id
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date             String
+  salary           Float
+  type             String
+  title            String
+  company          String
+  currency         String?
+  country          String?
+  location         String?
+  monthlyNetSalary Float?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model CompEvent {
+  id        String   @id
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date      String
+  amount    Float
+  type      String
+  title     String
+  company   String
+  currency  String?
+  country   String?
+  location  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
