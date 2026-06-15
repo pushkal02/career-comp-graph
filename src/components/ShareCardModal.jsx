@@ -427,7 +427,7 @@ export default function ShareCardModal({
     }
 
     // 6. Stats Grid at bottom
-    const statBoxLabels = ['Realized Career Earnings', 'Current Salary Remuneration', 'Realized Cash Bonuses', 'Realized Vested Stock'];
+    const statBoxLabels = ['Realized Career Earnings', 'Current Salary', 'Realized Cash Bonuses', 'Realized Vested Stock'];
     const statBoxKeys = ['totalRealized', 'currentBase', 'totalBonus', 'totalVest'];
     const statColors = [primaryColor, accentColor, '#10b981', '#a855f7'];
 

@@ -1,17 +1,17 @@
 import { DollarSign, Award, Percent, Layers, ShieldCheck } from 'lucide-react';
 import { convertCurrency, convertToPPP } from '../utils/currency';
 
-export default function DashboardStats({ 
-  salaryEvents, 
-  compEvents, 
-  startDate, 
+export default function DashboardStats({
+  salaryEvents,
+  compEvents,
+  startDate,
   currency,
   pppMode,
   exchangeRates,
   pppFactors
 }) {
   const baselineDate = startDate || "2024-01";
-  
+
   // Format currency dynamically based on selected option and PPP Mode
   const formatCurrency = (val) => {
     if (pppMode) {
@@ -74,12 +74,12 @@ export default function DashboardStats({
     const normB = normalizeDate(b.date);
     return normA.localeCompare(normB);
   });
-  const currentSalary = sortedSalaryEvents.length > 0 
+  const currentSalary = sortedSalaryEvents.length > 0
     ? convertValue(
-        sortedSalaryEvents[sortedSalaryEvents.length - 1].salary, 
-        sortedSalaryEvents[sortedSalaryEvents.length - 1].currency,
-        sortedSalaryEvents[sortedSalaryEvents.length - 1].country
-      ) 
+      sortedSalaryEvents[sortedSalaryEvents.length - 1].salary,
+      sortedSalaryEvents[sortedSalaryEvents.length - 1].currency,
+      sortedSalaryEvents[sortedSalaryEvents.length - 1].country
+    )
     : 0;
 
   // Get cutoff date representing the start of the current month (i.e. end of the last completed month)
@@ -96,18 +96,18 @@ export default function DashboardStats({
     for (let i = 0; i < sortedSalaryEvents.length; i++) {
       const currentEvent = sortedSalaryEvents[i];
       const nextEvent = sortedSalaryEvents[i + 1];
-      
+
       const normStart = normalizeDate(currentEvent.date);
       const normNext = nextEvent ? normalizeDate(nextEvent.date) : null;
-      
+
       let segmentStart = normStart;
       if (segmentStart < normBaseline) segmentStart = normBaseline;
       if (segmentStart > normCutoff) segmentStart = normCutoff;
-      
+
       let segmentEnd = normNext ? normNext : normCutoff;
       if (segmentEnd < normBaseline) segmentEnd = normBaseline;
       if (segmentEnd > normCutoff) segmentEnd = normCutoff;
-      
+
       const durationYears = getYearDiff(segmentStart, segmentEnd);
       if (durationYears > 0) {
         const segmentSalaryInDisplay = convertValue(currentEvent.salary, currentEvent.currency, currentEvent.country);
@@ -134,7 +134,7 @@ export default function DashboardStats({
 
   const stats = [
     {
-      label: "Current Salary Remuneration",
+      label: "Current Salary",
       value: formatCurrency(currentSalary),
       subtext: pppMode ? "Annual Reference Salary Remuneration (PPP adjusted)" : "Annual Reference Salary Remuneration rate",
       icon: <DollarSign size={20} style={{ color: 'var(--color-base)' }} />,
@@ -164,8 +164,8 @@ export default function DashboardStats({
     {
       label: "Realized Career Earnings",
       value: formatCurrency(totalRealizedComp),
-      subtext: pppMode 
-        ? "Cumulative remuneration + bonuses + vested stock (PPP adjusted)" 
+      subtext: pppMode
+        ? "Cumulative remuneration + bonuses + vested stock (PPP adjusted)"
         : "Cumulative base + bonuses + vested stock (up to start of current month)",
       icon: <Percent size={20} style={{ color: 'var(--color-primary)' }} />,
       className: "total"
