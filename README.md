@@ -94,11 +94,31 @@ Make sure you have [Node.js](https://nodejs.org/) (v18 or higher recommended) in
    npm install
    ```
 
-3. Launch the local development server:
+3. Configure environment variables:
+   Create a `.env` file at the root of the project and populate it as documented in `.env.example`:
    ```bash
-   npm run dev
+   # Create a copy of the example environment file
+   cp .env.example .env
    ```
-   Open the printed URL (usually `http://localhost:5173`) in your browser.
+   Set your `DATABASE_URL` with your MongoDB connection string (e.g. MongoDB Atlas cluster link), custom `JWT_SECRET`, and backend `PORT`.
+
+4. Apply the Prisma schema to MongoDB:
+   ```bash
+   npm run db:push
+   ```
+
+5. Migrate legacy SQLite data to MongoDB (One-time step):
+   If you have an existing SQLite database file (`backend/prisma/dev.db`), run the standalone migration script to transfer all users and timeline data to your MongoDB database:
+   ```bash
+   node backend/scripts/migrate.js
+   ```
+   *Note: This script runs system-wide and will safely preserve the SQLite database file for manual deletion once you confirm the data migration was successful.*
+
+6. Launch both frontend and backend development servers concurrently:
+   ```bash
+   npm run dev:all
+   ```
+   Open `http://localhost:5173` in your browser.
 
 ### Creating a Production Bundle
 To build the application for deployment:

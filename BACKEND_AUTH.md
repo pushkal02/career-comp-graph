@@ -9,7 +9,7 @@ This document describes the design, implementation, and portability of the backe
 CompGraph is powered by a standard client-server model:
 1. **Frontend**: React 19 + Vite 8 client dashboard. Handles visual charts, user settings toggles, CSV generation, and file uploads.
 2. **Backend**: Node.js + Express.js API server. Handles relational persistence, authentication sessions, and secure bulk uploads.
-3. **Database**: SQLite (local single-file database) accessed via **Prisma ORM**.
+3. **Database**: MongoDB Atlas database accessed via **Prisma ORM**.
 4. **Proxy**: Vite is configured during development to proxy `/api` routes directly to the Express server running on port 5000.
 
 ---
@@ -69,44 +69,43 @@ Authentication state persists across browser reloads for exactly **one month (30
 
 ---
 
-## 💱 SQLite to PostgreSQL Portability Guide
+## 🏛️ Database Migration & MongoDB Transition Guide
 
-Prisma ORM makes switching databases extremely simple. To migrate CompGraph from SQLite to PostgreSQL:
+CompGraph uses **MongoDB Atlas** as its production database to support SaaS deployments. 
 
-1. **Update Prisma Schema**:
-   Open `backend/prisma/schema.prisma` and edit the `db` block:
-   ```prisma
-   // Replace this:
-   datasource db {
-     provider = "sqlite"
-     url      = env("DATABASE_URL")
-   }
+### 1. Prisma MongoDB Configuration
+The Prisma schema located at `backend/prisma/schema.prisma` is configured with the `mongodb` provider:
+```prisma
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+```
 
-   // With this:
-   datasource db {
-     provider = "postgresql"
-     url      = env("DATABASE_URL")
-   }
-   ```
+To optimize performance and align with MongoDB's document model, CompGraph consolidates all data into a single `User` collection. User milestones are stored directly inside the user document as embedded arrays of composite types (`salaryEvents` and `compEvents`):
+```prisma
+model User {
+  id           String                @id @default(uuid()) @map("_id")
+  ...
+  salaryEvents EmbeddedSalaryEvent[]
+  compEvents   EmbeddedCompEvent[]
+}
 
-2. **Configure Database Connection String**:
-   Open `backend/.env` (and your root `.env` file) and replace the SQLite URL with your PostgreSQL connection URL:
-   ```env
-   # Replace this:
-   DATABASE_URL="file:./dev.db"
+type EmbeddedSalaryEvent {
+  id               String
+  date             String
+  salary           Float
+  ...
+}
+```
+This single-collection design eliminates relational joins, removes the need for multi-document database transactions, and allows fetching a user's entire career trajectory in a single index lookup.
 
-   # With this:
-   DATABASE_URL="postgresql://db_user:db_password@localhost:5432/comp_graph_db?schema=public"
-   ```
-
-3. **Re-generate Prisma Client & Run Migrations**:
-   Execute the following commands in your terminal:
-   ```bash
-   # Push schema changes to Postgres database
-   npx prisma db push --schema=backend/prisma/schema.prisma
-   ```
-
-No code changes are required in the Express server or React code as the Prisma client queries remain identical.
+### 2. Standalone Data Migration Script
+To migrate legacy SQLite data from `backend/prisma/dev.db` to MongoDB Atlas, a standalone system-wide script is used:
+```bash
+node backend/scripts/migrate.js
+```
+This script runs a read-only extract of SQLite records, resolves duplicate usernames/emails, maps IDs, inserts transactions into MongoDB Atlas, and reports migration statistics.
 
 ---
 
