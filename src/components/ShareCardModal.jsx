@@ -130,6 +130,28 @@ export default function ShareCardModal({
       const normCutoff = `${cutoffDate}-01`;
       const normBaseline = normalizeDate(baselineDate);
 
+      // Setup last completed day (yesterday) for realized events
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
+      const getLocalDateString = (dObj) => {
+        const y = dObj.getFullYear();
+        const m = String(dObj.getMonth() + 1).padStart(2, '0');
+        const d = String(dObj.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      };
+      const yesterdayStr = getLocalDateString(yesterday);
+
+      const isCompletedEvent = (dateStr) => {
+        if (!dateStr) return false;
+        if (dateStr.length === 7) {
+          const [y, m] = dateStr.split('-');
+          const lastDay = new Date(Number(y), Number(m), 0).getDate();
+          const lastDayStr = `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
+          return lastDayStr <= yesterdayStr;
+        }
+        return dateStr <= yesterdayStr;
+      };
+
       let cumulativeBaseEarned = 0;
       if (sortedSalaries.length > 0 && normBaseline < normCutoff) {
         for (let i = 0; i < sortedSalaries.length; i++) {
@@ -153,11 +175,11 @@ export default function ShareCardModal({
       }
 
       const totalBonus = compEvents
-        .filter(e => e.type === 'bonus' && normalizeDate(e.date) < normCutoff)
+        .filter(e => e.type === 'bonus' && isCompletedEvent(e.date))
         .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
       const totalVest = compEvents
-        .filter(e => e.type === 'vest' && normalizeDate(e.date) < normCutoff)
+        .filter(e => e.type === 'vest' && isCompletedEvent(e.date))
         .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
       const totalRealized = cumulativeBaseEarned + totalBonus + totalVest;

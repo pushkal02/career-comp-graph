@@ -17,6 +17,8 @@ export default function CompChart({
   const [dimensions, setDimensions] = useState({ width: 800, height: 450 });
   const [hoveredItem, setHoveredItem] = useState(null); // { x, y, title, value, date, type, category }
 
+  const [chartMode, setChartMode] = useState('rate'); // 'rate' or 'cumulative'
+
   // Graph filters state
   const [filters, setFilters] = useState({
     salaryLine: true,
@@ -26,7 +28,10 @@ export default function CompChart({
     jobswitch: true,
     bonus: true,
     grant: true,
-    vest: true
+    vest: true,
+    cumulativeLine: true,
+    avgMonthlySalary: true,
+    avgAnnualSalary: true
   });
 
   // Detect container size for responsiveness
@@ -47,7 +52,12 @@ export default function CompChart({
   }, []);
 
   // Constants
-  const padding = { top: 40, right: 60, bottom: 50, left: 80 };
+  const padding = { 
+    top: 40, 
+    right: 60, 
+    bottom: 50, 
+    left: 80 
+  };
   
   // Parse baseline start date (default to 2024-01)
   const baselineDate = startDate || "2024-01";
@@ -88,11 +98,115 @@ export default function CompChart({
     }
   };
 
+  const getYearDiff = (date1, date2) => {
+    const d1 = new Date(date1.length === 7 ? `${date1}-01` : date1);
+    const d2 = new Date(date2.length === 7 ? `${date2}-01` : date2);
+    const y1 = d1.getUTCFullYear();
+    const m1 = d1.getUTCMonth();
+    const day1 = d1.getUTCDate();
+    const y2 = d2.getUTCFullYear();
+    const m2 = d2.getUTCMonth();
+    const day2 = d2.getUTCDate();
+    const monthDiff = (y2 - y1) * 12 + (m2 - m1);
+    const dayDiff = day2 - day1;
+    const totalMonthsVal = monthDiff + dayDiff / 30.4368;
+    return totalMonthsVal / 12;
+  };
+
+  const getSalaryAtDate = (dateStr) => {
+    if (sortedSalaryEvents.length === 0) return 0;
+    const normDateStr = normalizeDate(dateStr);
+    let activeSalary = sortedSalaryEvents[0].salary;
+    let activeCurrency = sortedSalaryEvents[0].currency;
+    let activeCountry = sortedSalaryEvents[0].country;
+    for (let i = 0; i < sortedSalaryEvents.length; i++) {
+      const normEvtDate = normalizeDate(sortedSalaryEvents[i].date);
+      if (normEvtDate <= normDateStr) {
+        activeSalary = sortedSalaryEvents[i].salary;
+        activeCurrency = sortedSalaryEvents[i].currency;
+        activeCountry = sortedSalaryEvents[i].country;
+      }
+    }
+    return convertValue(activeSalary, activeCurrency, activeCountry);
+  };
+
+  // Precompute cumulative points
+  const cumulativePoints = [];
+  for (let m = 0; m <= totalMonths; m++) {
+    const y = startYear + Math.floor((startMonth - 1 + m) / 12);
+    const mon = ((startMonth - 1 + m) % 12) + 1;
+    const dateStr = `${y}-${String(mon).padStart(2, '0')}`;
+    const salaryRate = getSalaryAtDate(dateStr);
+    
+    let baseEarned = 0;
+    if (m > 0) {
+      const prevPoint = cumulativePoints[m - 1];
+      baseEarned = prevPoint.baseEarned + prevPoint.salaryRate / 12;
+    }
+    
+    const targetLimit = `${dateStr}-31`;
+    const compEarned = compEvents
+      .filter(e => (e.type === 'bonus' || e.type === 'vest') && e.date <= targetLimit)
+      .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
+      
+    const totalEarned = baseEarned + compEarned;
+    // Career-average annual earnings rate up to and including this month
+    const avgMonthlyScaled = (totalEarned * 12) / (m + 1);
+    
+    cumulativePoints.push({
+      m,
+      dateStr,
+      salaryRate,
+      baseEarned,
+      compEarned,
+      totalEarned,
+      avgMonthlyScaled
+    });
+  }
+
+  // Precompute rolling 12-month average of total annual earnings (salary + comp events in the window)
+  for (let m = 0; m <= totalMonths; m++) {
+    if (m < 11) {
+      cumulativePoints[m].avgAnnualRolling = null;
+      continue;
+    }
+    const startIndex = m - 11;
+    
+    let baseSalaryInWindow = 0;
+    for (let i = startIndex; i <= m; i++) {
+      baseSalaryInWindow += cumulativePoints[i].salaryRate / 12;
+    }
+    
+    const compInWindow = cumulativePoints[m].compEarned - (startIndex > 0 ? cumulativePoints[startIndex - 1].compEarned : 0);
+    const totalInWindow = baseSalaryInWindow + compInWindow;
+    
+    // totalInWindow is the sum of 12 months of earnings = 1-year worth.
+    // Do NOT multiply by 12 again — that would double-annualize it.
+    cumulativePoints[m].avgAnnualRolling = totalInWindow;
+  }
+
+  const currentMonth = today.getMonth() + 1;
+  const cutoffDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+
   // Maximum and Minimum salary for Y scale
   const salaries = salaryEvents.map(e => convertValue(e.salary, e.currency, e.country));
   const maxSalary = salaries.length > 0 ? Math.max(...salaries) : 100000;
   const maxY = Math.ceil((maxSalary * 1.15) / 10000) * 10000; // Pad 15% and round to nearest $10k
   const minY = 0;
+
+  const maxCumulative = cumulativePoints.length > 0 ? Math.max(...cumulativePoints.map(p => p.totalEarned)) : 100000;
+  const maxYCumulative = Math.ceil((maxCumulative * 1.15) / 10000) * 10000;
+  
+  // Maximum average rate (salary + comp)
+  const maxAverageRate = cumulativePoints.length > 0
+    ? Math.max(...cumulativePoints.map(p => Math.max(p.avgMonthlyScaled || 0, p.avgAnnualRolling || 0)))
+    : 100000;
+  const maxRateValue = Math.max(maxSalary, maxAverageRate);
+  const maxYRate = Math.ceil((maxRateValue * 1.15) / 10000) * 10000;
+
+  // In cumulative mode: Y-axis scales to the cumulative total (largest value).
+  // The rate lines (rolling avg, career avg) are smaller values on the same axis.
+  const currentMaxY = chartMode === 'cumulative' ? maxYCumulative : maxY;
 
   // Maximum compensation event amount for circle sizing
   const compAmounts = compEvents.map(e => convertValue(e.amount, e.currency, e.country));
@@ -125,6 +239,8 @@ export default function CompChart({
         --color-vest: ${isLightMode ? '#7c3aed' : '#a855f7'};
         --bg-primary: ${isLightMode ? '#f8fafc' : '#070a13'};
         --text-primary: ${isLightMode ? '#0f172a' : '#f8fafc'};
+        --color-avg-monthly: ${isLightMode ? '#0284c7' : '#38bdf8'};
+        --color-avg-annual: ${isLightMode ? '#4f46e5' : '#818cf8'};
       }
       svg { background-color: ${isLightMode ? '#f8fafc' : '#070a13'}; font-family: 'Outfit', sans-serif; }
       .chart-grid-line { stroke: ${isLightMode ? 'rgba(15, 23, 42, 0.05)' : 'rgba(255, 255, 255, 0.03)'}; stroke-width: 1; }
@@ -136,6 +252,12 @@ export default function CompChart({
       .chart-event-node rect { stroke-width: 1.5; }
       .chart-salary-label { fill: ${isLightMode ? '#0284c7' : '#38bdf8'}; stroke: ${isLightMode ? '#f8fafc' : '#070a13'}; stroke-width: 3px; paint-order: stroke; font-weight: 800; font-family: 'JetBrains Mono', monospace; font-size: 9.5px; }
       .chart-comp-label { fill: ${isLightMode ? '#0f172a' : '#f8fafc'}; stroke: ${isLightMode ? '#f8fafc' : '#070a13'}; stroke-width: 2.5px; paint-order: stroke; font-weight: 700; font-family: 'JetBrains Mono', monospace; font-size: 9px; }
+      .chart-line-cumulative-realized { fill: none; stroke: var(--color-vest); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+      .chart-line-cumulative-realized-shadow { fill: url(#cumulative-realized-gradient); opacity: 0.08; }
+      .chart-line-cumulative-projected { fill: none; stroke: var(--color-vest); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 4,4; }
+      .chart-line-cumulative-projected-shadow { fill: url(#cumulative-projected-gradient); opacity: 0.05; }
+      .chart-line-avg-monthly { fill: none; stroke: var(--color-avg-monthly); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 4,4; }
+      .chart-line-avg-annual { fill: none; stroke: var(--color-avg-annual); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
     `;
     clonedSvg.insertBefore(styleEl, clonedSvg.firstChild);
 
@@ -285,29 +407,10 @@ export default function CompChart({
   };
 
   const getY = (salary) => {
-    const ratio = (salary - minY) / (maxY - minY);
+    const ratio = (salary - minY) / (currentMaxY - minY);
     const chartHeight = dimensions.height - padding.top - padding.bottom;
     // SVG 0,0 is top-left, so we invert
     return dimensions.height - padding.bottom - ratio * chartHeight;
-  };
-
-  // Helper to find base salary at any given date string YYYY-MM
-  const getSalaryAtDate = (dateStr) => {
-    if (sortedSalaryEvents.length === 0) return 0;
-    const normDateStr = normalizeDate(dateStr);
-    // Find last salary event on or before this date
-    let activeSalary = sortedSalaryEvents[0].salary;
-    let activeCurrency = sortedSalaryEvents[0].currency;
-    let activeCountry = sortedSalaryEvents[0].country;
-    for (let i = 0; i < sortedSalaryEvents.length; i++) {
-      const normEvtDate = normalizeDate(sortedSalaryEvents[i].date);
-      if (normEvtDate <= normDateStr) {
-        activeSalary = sortedSalaryEvents[i].salary;
-        activeCurrency = sortedSalaryEvents[i].currency;
-        activeCountry = sortedSalaryEvents[i].country;
-      }
-    }
-    return convertValue(activeSalary, activeCurrency, activeCountry);
   };
 
   // Calculate circle radius based on amount (Area proportional to amount)
@@ -493,10 +596,96 @@ export default function CompChart({
   // Draw grid lines
   const gridLinesY = [];
   const yTicksCount = 5;
-  const salaryDiff = maxY - minY;
+  const salaryDiff = currentMaxY - minY;
   for (let i = 0; i <= yTicksCount; i++) {
     const val = minY + (salaryDiff / yTicksCount) * i;
     gridLinesY.push(val);
+  }
+
+  // Cumulative earnings paths
+  let cumulativeRealizedPathD = '';
+  let cumulativeRealizedAreaD = '';
+  let cumulativeProjectedPathD = '';
+  let cumulativeProjectedAreaD = '';
+
+  const realizedPoints = cumulativePoints.filter(p => p.dateStr < cutoffDate);
+  const projectedPoints = cumulativePoints.filter(p => p.dateStr >= cutoffDate);
+  const bottomY = dimensions.height - padding.bottom;
+
+  // Cumulative area: plots absolute totalEarned $ (grows over time, always largest)
+  // getAnnualizedRate is no longer used — area uses totalEarned directly.
+
+  if (realizedPoints.length > 0) {
+    const startX = getX(realizedPoints[0].dateStr);
+    const startY = getY(realizedPoints[0].totalEarned);
+    cumulativeRealizedPathD = `M ${startX} ${startY}`;
+    cumulativeRealizedAreaD = `M ${startX} ${bottomY} L ${startX} ${startY}`;
+    
+    for (let i = 1; i < realizedPoints.length; i++) {
+      const pt = realizedPoints[i];
+      cumulativeRealizedPathD += ` L ${getX(pt.dateStr)} ${getY(pt.totalEarned)}`;
+      cumulativeRealizedAreaD += ` L ${getX(pt.dateStr)} ${getY(pt.totalEarned)}`;
+    }
+    
+    const lastRealized = realizedPoints[realizedPoints.length - 1];
+    cumulativeRealizedAreaD += ` L ${getX(lastRealized.dateStr)} ${bottomY} Z`;
+
+    if (projectedPoints.length > 0) {
+      cumulativeProjectedPathD = `M ${getX(lastRealized.dateStr)} ${getY(lastRealized.totalEarned)}`;
+      cumulativeProjectedAreaD = `M ${getX(lastRealized.dateStr)} ${bottomY} L ${getX(lastRealized.dateStr)} ${getY(lastRealized.totalEarned)}`;
+      
+      for (let i = 0; i < projectedPoints.length; i++) {
+        const pt = projectedPoints[i];
+        cumulativeProjectedPathD += ` L ${getX(pt.dateStr)} ${getY(pt.totalEarned)}`;
+        cumulativeProjectedAreaD += ` L ${getX(pt.dateStr)} ${getY(pt.totalEarned)}`;
+      }
+      
+      const lastProjected = projectedPoints[projectedPoints.length - 1];
+      cumulativeProjectedAreaD += ` L ${getX(lastProjected.dateStr)} ${bottomY} Z`;
+    }
+  } else if (projectedPoints.length > 0) {
+    const startX = getX(projectedPoints[0].dateStr);
+    const startY = getY(projectedPoints[0].totalEarned);
+    cumulativeProjectedPathD = `M ${startX} ${startY}`;
+    cumulativeProjectedAreaD = `M ${startX} ${bottomY} L ${startX} ${startY}`;
+    
+    for (let i = 1; i < projectedPoints.length; i++) {
+      const pt = projectedPoints[i];
+      cumulativeProjectedPathD += ` L ${getX(pt.dateStr)} ${getY(pt.totalEarned)}`;
+      cumulativeProjectedAreaD += ` L ${getX(pt.dateStr)} ${getY(pt.totalEarned)}`;
+    }
+    const lastProjected = projectedPoints[projectedPoints.length - 1];
+    cumulativeProjectedAreaD += ` L ${getX(lastProjected.dateStr)} ${bottomY} Z`;
+  }
+
+  // Average paths
+  let avgMonthlyPathD = '';
+  let avgAnnualPathD = '';
+
+  // Both average lines start only after a full year (month index 11 = 12th month)
+  const firstEventDateStr = sortedSalaryEvents.length > 0
+    ? sortedSalaryEvents[0].date.slice(0, 7)
+    : (cumulativePoints[0]?.dateStr || '');
+  const firstEventIdx = cumulativePoints.findIndex(p => p.dateStr >= firstEventDateStr);
+  // Start at whichever comes later: first event OR 1-year mark
+  const avgStartIdx = Math.max(firstEventIdx >= 0 ? firstEventIdx : 0, 11);
+
+  if (cumulativePoints.length > avgStartIdx) {
+    // Career average: starts after 1 full year, same threshold as rolling average
+    avgMonthlyPathD = `M ${getX(cumulativePoints[avgStartIdx].dateStr)} ${getY(cumulativePoints[avgStartIdx].avgMonthlyScaled)}`;
+    for (let i = avgStartIdx + 1; i < cumulativePoints.length; i++) {
+      const pt = cumulativePoints[i];
+      avgMonthlyPathD += ` L ${getX(pt.dateStr)} ${getY(pt.avgMonthlyScaled)}`;
+    }
+
+    // Rolling average starts at m = 11 (the 12th month, i.e. after 1 full year)
+    if (cumulativePoints.length > 11) {
+      avgAnnualPathD = `M ${getX(cumulativePoints[11].dateStr)} ${getY(cumulativePoints[11].avgAnnualRolling)}`;
+      for (let i = 12; i < cumulativePoints.length; i++) {
+        const pt = cumulativePoints[i];
+        avgAnnualPathD += ` L ${getX(pt.dateStr)} ${getY(pt.avgAnnualRolling)}`;
+      }
+    }
   }
 
   const gridLinesX = [];
@@ -532,79 +721,101 @@ export default function CompChart({
     <div className="glass-panel animate-fade-in" style={{ padding: '2rem 1.5rem 1rem 1.5rem', position: 'relative' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
         <div>
-          <h2 style={{ fontSize: '1.25rem', fontWeight: '700' }}>Compensation Progression Timeline</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>Proportional financial event circles mapped on salary remuneration timeline</p>
+          <h2 style={{ fontSize: '1.25rem', fontWeight: '700' }}>
+            {chartMode === 'cumulative' ? "Cumulative Career Earnings" : "Compensation Progression Timeline"}
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
+            {chartMode === 'cumulative' 
+              ? "Continuous career base salary integration plus discrete cash payouts" 
+              : "Proportional financial event circles mapped on salary remuneration timeline"}
+          </p>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.75rem' }}>
-          {/* Legends */}
-          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.8rem', fontWeight: 600, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--color-base)' }}></span>
-              <span style={{ color: 'var(--text-secondary)' }}>Gross Salary</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span style={{ width: '12px', height: '0px', borderTop: '2.5px dashed #10b981' }}></span>
-              <span style={{ color: 'var(--text-secondary)' }}>Net Take-Home</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--color-bonus)' }}></span>
-              <span style={{ color: 'var(--text-secondary)' }}>Bonus</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--color-grant)' }}></span>
-              <span style={{ color: 'var(--text-secondary)' }}>Grant</span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--color-vest)' }}></span>
-              <span style={{ color: 'var(--text-secondary)' }}>Vesting</span>
-            </div>
-          </div>
-          {/* Action buttons */}
-          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* Mode Selector */}
+          <div style={{ display: 'flex', background: 'var(--bg-secondary)', padding: '2px', borderRadius: '8px', border: '1px solid var(--border-color)', gap: '2px', marginRight: '0.5rem' }}>
             <button
-              onClick={onOpenShareCard}
+              type="button"
               className="btn"
-              style={{ 
-                padding: '0.25rem 0.6rem', 
-                fontSize: '0.75rem', 
-                width: 'auto', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '0.25rem', 
-                background: 'var(--color-primary)', 
-                color: '#fff',
-                borderColor: 'var(--color-primary-hover)'
+              style={{
+                padding: '0.25rem 0.6rem',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                borderRadius: '6px',
+                border: 'none',
+                background: chartMode === 'rate' ? 'var(--color-primary)' : 'transparent',
+                color: chartMode === 'rate' ? '#fff' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                width: 'auto'
               }}
-              title="Generate a beautiful shareable social card"
+              onClick={() => setChartMode('rate')}
             >
-              <Sparkles size={13} /> Share Card
+              Salary Rate & Events
             </button>
             <button
-              onClick={downloadChartPNG}
-              className="btn btn-secondary"
-              style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', width: 'auto', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-              title="Download chart as PNG image"
+              type="button"
+              className="btn"
+              style={{
+                padding: '0.25rem 0.6rem',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                borderRadius: '6px',
+                border: 'none',
+                background: chartMode === 'cumulative' ? 'var(--color-primary)' : 'transparent',
+                color: chartMode === 'cumulative' ? '#fff' : 'var(--text-secondary)',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+                width: 'auto'
+              }}
+              onClick={() => setChartMode('cumulative')}
             >
-              <Download size={13} /> Download Graph (PNG)
+              Cumulative Earnings
             </button>
-            <button
-              onClick={exportJSON}
-              className="btn btn-secondary"
-              style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', width: 'auto', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-              title="Export data as JSON file"
-            >
-              <FileSpreadsheet size={13} /> Export JSON
-            </button>
-            <button
-              onClick={exportCSV}
-              className="btn btn-secondary"
-              style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', width: 'auto', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-              title="Export data as CSV spreadsheet"
-            >
-              <FileSpreadsheet size={13} /> Export CSV
-            </button>
-
           </div>
+
+          {/* Action buttons */}
+          <button
+            onClick={onOpenShareCard}
+            className="btn"
+            style={{ 
+              padding: '0.25rem 0.6rem', 
+              fontSize: '0.75rem', 
+              width: 'auto', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.25rem', 
+              background: 'var(--color-primary)', 
+              color: '#fff',
+              borderColor: 'var(--color-primary-hover)'
+            }}
+            title="Generate a beautiful shareable social card"
+          >
+            <Sparkles size={13} /> Share Card
+          </button>
+          <button
+            onClick={downloadChartPNG}
+            className="btn btn-secondary"
+            style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', width: 'auto', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+            title="Download chart as PNG image"
+          >
+            <Download size={13} /> Download Graph (PNG)
+          </button>
+          <button
+            onClick={exportJSON}
+            className="btn btn-secondary"
+            style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', width: 'auto', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+            title="Export data as JSON file"
+          >
+            <FileSpreadsheet size={13} /> Export JSON
+          </button>
+          <button
+            onClick={exportCSV}
+            className="btn btn-secondary"
+            style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', width: 'auto', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+            title="Export data as CSV spreadsheet"
+          >
+            <FileSpreadsheet size={13} /> Export CSV
+          </button>
         </div>
       </div>
 
@@ -613,18 +824,39 @@ export default function CompChart({
         <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 700, marginRight: '0.25rem', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           Filter Timeline:
         </span>
-        {[
-          { key: 'salaryLine', label: 'Gross Salary Line', color: 'var(--color-base)' },
-          { key: 'netSalaryLine', label: 'Net Take-Home Line', color: '#10b981' },
-          { key: 'hike', label: 'Salary Hikes', color: 'var(--color-hike)' },
-          { key: 'promotion', label: 'Promotions', color: 'var(--color-promotion)' },
-          { key: 'jobswitch', label: 'Job Switches', color: 'var(--color-switch)' },
-          { key: 'bonus', label: 'Bonuses', color: 'var(--color-bonus)' },
-          { key: 'grant', label: 'Grants', color: 'var(--color-grant)' },
-          { key: 'vest', label: 'Vesting', color: 'var(--color-vest)' }
-        ].map((filter) => {
+        {(chartMode === 'rate'
+          ? [
+              { key: 'salaryLine', label: 'Gross Salary Line', color: 'var(--color-base)' },
+              { key: 'netSalaryLine', label: 'Net Take-Home Line', color: '#10b981' },
+              { key: 'hike', label: 'Salary Hikes', color: 'var(--color-hike)' },
+              { key: 'promotion', label: 'Promotions', color: 'var(--color-promotion)' },
+              { key: 'jobswitch', label: 'Job Switches', color: 'var(--color-switch)' },
+              { key: 'bonus', label: 'Bonuses', color: 'var(--color-bonus)' },
+              { key: 'grant', label: 'Grants', color: 'var(--color-grant)' },
+              { key: 'vest', label: 'Vesting', color: 'var(--color-vest)' }
+            ]
+          : [
+              { key: 'cumulativeLine', label: 'Cumulative Earnings', color: 'var(--color-vest)' },
+              { key: 'avgMonthlySalary', label: 'Cumulative Average Earnings', color: 'var(--color-avg-monthly)' },
+              { key: 'avgAnnualSalary', label: 'Rolling Average Earnings', color: 'var(--color-avg-annual)' },
+              { key: 'bonus', label: 'Bonuses', color: 'var(--color-bonus)' },
+              { key: 'vest', label: 'Vesting', color: 'var(--color-vest)' }
+            ]
+        ).map((filter) => {
           const isActive = filters[filter.key];
-          const rgbString = filter.key === 'salaryLine' ? '56, 189, 248' : filter.key === 'netSalaryLine' ? '16, 185, 129' : filter.key === 'hike' ? '20, 184, 166' : filter.key === 'promotion' ? '236, 72, 153' : filter.key === 'jobswitch' ? '59, 130, 246' : filter.key === 'bonus' ? '16, 185, 129' : filter.key === 'grant' ? '245, 158, 11' : '168, 85, 247';
+          let rgbString = '168, 85, 247'; // Default violet
+          if (filter.key === 'salaryLine') rgbString = '56, 189, 248';
+          else if (filter.key === 'netSalaryLine') rgbString = '16, 185, 129';
+          else if (filter.key === 'hike') rgbString = '20, 184, 166';
+          else if (filter.key === 'promotion') rgbString = '236, 72, 153';
+          else if (filter.key === 'jobswitch') rgbString = '59, 130, 246';
+          else if (filter.key === 'bonus') rgbString = '16, 185, 129';
+          else if (filter.key === 'grant') rgbString = '245, 158, 11';
+          else if (filter.key === 'vest') rgbString = '168, 85, 247';
+          else if (filter.key === 'cumulativeLine') rgbString = '168, 85, 247';
+          else if (filter.key === 'avgMonthlySalary') rgbString = '14, 165, 233';
+          else if (filter.key === 'avgAnnualSalary') rgbString = '99, 102, 241';
+
           return (
             <button
               key={filter.key}
@@ -677,6 +909,16 @@ export default function CompChart({
                 <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
                 <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
               </linearGradient>
+
+              {/* Cumulative Gradients */}
+              <linearGradient id="cumulative-realized-gradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--color-vest)" stopOpacity="0.25" />
+                <stop offset="100%" stopColor="var(--color-vest)" stopOpacity="0.0" />
+              </linearGradient>
+              <linearGradient id="cumulative-projected-gradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--color-vest)" stopOpacity="0.15" />
+                <stop offset="100%" stopColor="var(--color-vest)" stopOpacity="0.0" />
+              </linearGradient>
             </defs>
 
             {/* Y Axis Grid Lines & Labels */}
@@ -725,45 +967,390 @@ export default function CompChart({
               </g>
             ))}
 
-            {/* Salary Area Shadow */}
-            {/* Net Salary Step Line & Area */}
-            {filters.netSalaryLine && netSalaryAreaD && <path className="chart-line-net-shadow" d={netSalaryAreaD} />}
-            {filters.netSalaryLine && netSalaryPathD && <path className="chart-line-net-salary" d={netSalaryPathD} />}
 
-            {/* Salary Area Shading */}
-            {filters.salaryLine && salaryAreaD && <path className="chart-line-shadow" d={salaryAreaD} />}
 
-            {/* Salary Step Line */}
-            {filters.salaryLine && salaryPathD && <path className="chart-line-salary" d={salaryPathD} />}
+            {/* Render lines and nodes based on Mode */}
+            {chartMode === 'rate' ? (
+              <g>
+                {/* Net Salary Step Line & Area */}
+                {filters.netSalaryLine && netSalaryAreaD && <path className="chart-line-net-shadow" d={netSalaryAreaD} />}
+                {filters.netSalaryLine && netSalaryPathD && <path className="chart-line-net-salary" d={netSalaryPathD} />}
 
-            {/* Salary Step Line Labels */}
-            {filters.salaryLine && salarySegments.map((seg, idx) => {
-              const width = seg.endX - seg.startX;
-              if (width < 45) return null; // Skip if too narrow to prevent cluttering
-              const startOffset = idx === 0 ? 8 : 14;
-              const x = seg.startX + startOffset;
-              const y = seg.y - 6;
-              return (
-                <text
-                  key={`salary-lbl-${seg.id || idx}`}
-                  className="chart-salary-label"
-                  x={x}
-                  y={y}
-                  textAnchor="start"
-                  fill="var(--color-base)"
-                  stroke="var(--bg-primary)"
-                  strokeWidth="3px"
-                  paintOrder="stroke"
-                  strokeLinejoin="round"
-                  fontSize="9.5px"
-                  fontWeight="800"
-                  fontFamily="var(--font-mono)"
-                  pointerEvents="none"
-                >
-                  {formatShortCurrency(seg.salary)}
-                </text>
-              );
-            })}
+                {/* Salary Area Shading */}
+                {filters.salaryLine && salaryAreaD && <path className="chart-line-shadow" d={salaryAreaD} />}
+
+                {/* Salary Step Line */}
+                {filters.salaryLine && salaryPathD && <path className="chart-line-salary" d={salaryPathD} />}
+
+                {/* Salary Step Line Labels */}
+                {filters.salaryLine && salarySegments.map((seg, idx) => {
+                  const width = seg.endX - seg.startX;
+                  if (width < 45) return null; // Skip if too narrow to prevent cluttering
+                  const startOffset = idx === 0 ? 8 : 14;
+                  const x = seg.startX + startOffset;
+                  const y = seg.y - 6;
+                  return (
+                    <text
+                      key={`salary-lbl-${seg.id || idx}`}
+                      className="chart-salary-label"
+                      x={x}
+                      y={y}
+                      textAnchor="start"
+                      fill="var(--color-base)"
+                      stroke="var(--bg-primary)"
+                      strokeWidth="3px"
+                      paintOrder="stroke"
+                      strokeLinejoin="round"
+                      fontSize="9.5px"
+                      fontWeight="800"
+                      fontFamily="var(--font-mono)"
+                      pointerEvents="none"
+                    >
+                      {formatShortCurrency(seg.salary)}
+                    </text>
+                  );
+                })}
+
+                {/* Salary Change Event Nodes (Diamond/Square Indicators) */}
+                {sortedSalaryEvents.map((evt, idx) => {
+                  if (idx === 0) return null;
+                  if (!filters[evt.type]) return null;
+                  
+                  const x = getX(evt.date);
+                  const y = getY(convertValue(evt.salary, evt.currency, evt.country));
+                  
+                  let color = 'var(--color-hike)';
+                  if (evt.type === 'promotion') color = 'var(--color-promotion)';
+                  if (evt.type === 'jobswitch') color = 'var(--color-switch)';
+      
+                  return (
+                    <g 
+                       key={`salary-evt-${evt.id}`}
+                       className="chart-event-node"
+                       style={{ '--node-color': color }}
+                       transform={`translate(${x}, ${y})`}
+                       onMouseEnter={() => {
+                          const prevEvent = sortedSalaryEvents[idx - 1];
+                          const prevSalary = convertValue(prevEvent.salary, prevEvent.currency, prevEvent.country);
+                          const currSalary = convertValue(evt.salary, evt.currency, evt.country);
+                          const pctDiff = prevSalary !== 0 ? ((currSalary - prevSalary) / prevSalary) * 100 : 0;
+                          
+                          const prevNetVal = prevEvent.monthlyNetSalary !== undefined && prevEvent.monthlyNetSalary !== null
+                            ? prevEvent.monthlyNetSalary * 12
+                            : prevEvent.salary;
+                          const currNetVal = evt.monthlyNetSalary !== undefined && evt.monthlyNetSalary !== null
+                            ? evt.monthlyNetSalary * 12
+                            : evt.salary;
+                          
+                          const prevNetSalary = convertValue(prevNetVal, prevEvent.currency, prevEvent.country);
+                          const currNetSalary = convertValue(currNetVal, evt.currency, evt.country);
+                          const netHikeDiff = (currNetSalary - prevNetSalary) / 12;
+                          const pctNetDiff = prevNetSalary !== 0 ? ((currNetSalary - prevNetSalary) / prevNetSalary) * 100 : 0;
+
+                          setHoveredItem({
+                            x: x,
+                            y: y - 10,
+                            title: evt.title,
+                            value: `${formatFullCurrency(currSalary)}/yr`,
+                            subValue: pctDiff > 0 ? `+${pctDiff.toFixed(0)}% gross change` : `${pctDiff.toFixed(0)}% gross change`,
+                            date: formatDateLabel(evt.date),
+                            type: evt.type,
+                            company: evt.company || 'Self-Employed',
+                            country: evt.country,
+                            location: evt.location,
+                            category: 'salary',
+                            convertedGross: currSalary / 12,
+                            convertedNet: evt.monthlyNetSalary !== undefined && evt.monthlyNetSalary !== null 
+                              ? convertValue(evt.monthlyNetSalary, evt.currency, evt.country) 
+                              : convertValue(evt.salary / 12, evt.currency, evt.country),
+                            netHikeDiff: netHikeDiff,
+                            pctNetDiff: pctNetDiff
+                          });
+                        }}
+                       onMouseLeave={() => setHoveredItem(null)}
+                    >
+                      <rect 
+                        x="-7" 
+                        y="-7" 
+                        width="14" 
+                        height="14" 
+                        rx="2"
+                        transform="rotate(45)"
+                        fill={color} 
+                        opacity="0.3"
+                        stroke={color}
+                        strokeWidth="4"
+                      />
+                      <rect 
+                        x="-5" 
+                        y="-5" 
+                        width="10" 
+                        height="10" 
+                        rx="1"
+                        transform="rotate(45)"
+                        fill={color} 
+                        stroke="#fff"
+                        strokeWidth="1.5"
+                      />
+                    </g>
+                  );
+                })}
+
+                {/* Financial Overlay Circles (Bonus, Grant, Vest) */}
+                {(() => {
+                  const filteredCompEvents = compEvents.filter(evt => filters[evt.type]);
+                  const compGroupsByDate = {};
+                  filteredCompEvents.forEach((evt) => {
+                    const normalizedDate = normalizeDate(evt.date);
+                    if (!compGroupsByDate[normalizedDate]) {
+                      compGroupsByDate[normalizedDate] = [];
+                    }
+                    compGroupsByDate[normalizedDate].push(evt);
+                  });
+     
+                  return Object.entries(compGroupsByDate).map(([date, group]) => {
+                    const x = getX(date);
+                    const activeSalary = getSalaryAtDate(date);
+                    const y = getY(activeSalary);
+                    
+                    const sortedGroup = [...group].sort((a, b) => {
+                      const valA = convertValue(a.amount, a.currency, a.country);
+                      const valB = convertValue(b.amount, b.currency, b.country);
+                      return valB - valA;
+                    });
+      
+                    const groupWithRadii = [];
+                    let prevRadius = 0;
+                    for (let i = sortedGroup.length - 1; i >= 0; i--) {
+                      const evt = sortedGroup[i];
+                      const convertedAmt = convertValue(evt.amount, evt.currency, evt.country);
+                      const baseRadius = getCircleRadius(convertedAmt);
+                      
+                      let radius;
+                      if (i === sortedGroup.length - 1) {
+                        radius = baseRadius;
+                      } else {
+                        const areaSumRadius = Math.sqrt(prevRadius * prevRadius + baseRadius * baseRadius);
+                        radius = Math.max(areaSumRadius, prevRadius + 6);
+                      }
+                      
+                      groupWithRadii.unshift({ evt, radius });
+                      prevRadius = radius;
+                    }
+     
+                    return (
+                      <g key={`comp-group-${date}`}>
+                        {groupWithRadii.map(({ evt, radius }, idx) => {
+                          let fillColor = 'rgba(16, 185, 129, 0.22)';
+                          let strokeColor = 'var(--color-bonus)';
+                          if (evt.type === 'grant') {
+                            fillColor = 'rgba(245, 158, 11, 0.22)';
+                            strokeColor = 'var(--color-grant)';
+                          } else if (evt.type === 'vest') {
+                            fillColor = 'rgba(168, 85, 247, 0.22)';
+                            strokeColor = 'var(--color-vest)';
+                          }
+     
+                          const isInnermost = idx === groupWithRadii.length - 1;
+     
+                          if (isInnermost) {
+                            return (
+                              <g
+                                key={`comp-evt-${evt.id}`}
+                                className="chart-comp-node"
+                                style={{ '--node-color': strokeColor }}
+                                transform={`translate(${x}, ${y})`}
+                                onMouseEnter={() => {
+                                  setHoveredItem({
+                                    x: x,
+                                    y: y - radius - 10,
+                                    title: evt.title,
+                                    value: pppMode ? formatFullCurrency(convertValue(evt.amount, evt.currency, evt.country)) : formatFullCurrency(evt.amount, evt.currency),
+                                    date: formatDateLabel(evt.date),
+                                    type: evt.type,
+                                    company: evt.company || 'Self-Employed',
+                                    country: evt.country,
+                                    location: evt.location,
+                                    category: 'comp'
+                                  });
+                                }}
+                                onMouseLeave={() => setHoveredItem(null)}
+                              >
+                                <circle
+                                  r={radius}
+                                  fill={fillColor}
+                                  stroke={strokeColor}
+                                  strokeWidth="2"
+                                  style={{ filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.4))' }}
+                                />
+                                <circle
+                                  r={Math.max(radius - 4, 3)}
+                                  fill="transparent"
+                                  stroke="rgba(255,255,255,0.15)"
+                                  strokeWidth="1"
+                                  strokeDasharray="2,2"
+                                />
+                                <text
+                                  className="chart-comp-label"
+                                  textAnchor="middle"
+                                  y={-radius - 5}
+                                  fill="var(--text-primary)"
+                                  stroke="var(--bg-primary)"
+                                  strokeWidth="2.5px"
+                                  paintOrder="stroke"
+                                  strokeLinejoin="round"
+                                  fontSize="9px"
+                                  fontWeight="700"
+                                  fontFamily="var(--font-mono)"
+                                  pointerEvents="none"
+                                >
+                                  {formatShortCurrency(evt.amount, evt.currency)}
+                                </text>
+                              </g>
+                            );
+                          } else {
+                            const nextRadius = groupWithRadii[idx + 1].radius;
+                            const strokeWidth = radius - nextRadius;
+                            const ringRadius = (radius + nextRadius) / 2;
+     
+                            return (
+                              <g
+                                key={`comp-evt-${evt.id}`}
+                                className="chart-comp-node"
+                                style={{ '--node-color': strokeColor }}
+                                transform={`translate(${x}, ${y})`}
+                                onMouseEnter={() => {
+                                  setHoveredItem({
+                                    x: x,
+                                    y: y - radius - 10,
+                                    title: evt.title,
+                                    value: pppMode ? formatFullCurrency(convertValue(evt.amount, evt.currency, evt.country)) : formatFullCurrency(evt.amount, evt.currency),
+                                    date: formatDateLabel(evt.date),
+                                    type: evt.type,
+                                    company: evt.company || 'Self-Employed',
+                                    country: evt.country,
+                                    location: evt.location,
+                                    category: 'comp'
+                                  });
+                                }}
+                                onMouseLeave={() => setHoveredItem(null)}
+                              >
+                                <circle
+                                  r={ringRadius}
+                                  fill="none"
+                                  stroke={strokeColor}
+                                  strokeWidth={strokeWidth}
+                                  strokeOpacity="0.22"
+                                />
+                                <circle
+                                  r={radius}
+                                  fill="none"
+                                  stroke={strokeColor}
+                                  strokeWidth="1.5"
+                                />
+                                <text
+                                  className="chart-comp-label"
+                                  textAnchor="middle"
+                                  y={-radius - 5}
+                                  fill="var(--text-primary)"
+                                  stroke="var(--bg-primary)"
+                                  strokeWidth="2.5px"
+                                  paintOrder="stroke"
+                                  strokeLinejoin="round"
+                                  fontSize="9px"
+                                  fontWeight="700"
+                                  fontFamily="var(--font-mono)"
+                                  pointerEvents="none"
+                                >
+                                  {formatShortCurrency(evt.amount, evt.currency)}
+                                </text>
+                              </g>
+                            );
+                          }
+                        })}
+                      </g>
+                    );
+                  });
+                })()}
+              </g>
+            ) : (
+              <g>
+                {/* Cumulative Realized Area & Line */}
+                {filters.cumulativeLine && cumulativeRealizedAreaD && (
+                  <path className="chart-line-cumulative-realized-shadow" d={cumulativeRealizedAreaD} />
+                )}
+                {filters.cumulativeLine && cumulativeRealizedPathD && (
+                  <path className="chart-line-cumulative-realized" d={cumulativeRealizedPathD} />
+                )}
+
+                {/* Cumulative Projected Area & Line */}
+                {filters.cumulativeLine && cumulativeProjectedAreaD && (
+                  <path className="chart-line-cumulative-projected-shadow" d={cumulativeProjectedAreaD} />
+                )}
+                {filters.cumulativeLine && cumulativeProjectedPathD && (
+                  <path className="chart-line-cumulative-projected" d={cumulativeProjectedPathD} />
+                )}
+
+                {/* Average Monthly Salary Line */}
+                {filters.avgMonthlySalary && avgMonthlyPathD && (
+                  <path className="chart-line-avg-monthly" d={avgMonthlyPathD} />
+                )}
+
+                {/* Average Annual Salary Line */}
+                {filters.avgAnnualSalary && avgAnnualPathD && (
+                  <path className="chart-line-avg-annual" d={avgAnnualPathD} />
+                )}
+
+                {/* Discrete Compensation events as points */}
+                {(() => {
+                  const cumulativeCompEvents = compEvents.filter(evt => (evt.type === 'bonus' || evt.type === 'vest') && filters[evt.type]);
+                  return cumulativeCompEvents.map((evt) => {
+                    const normDate = normalizeDate(evt.date);
+                    const datePrefix = normDate.slice(0, 7); // YYYY-MM
+                    const pt = cumulativePoints.find(p => p.dateStr === datePrefix);
+                    if (!pt) return null;
+                    
+                    const x = getX(evt.date);
+                    const y = getY(pt.totalEarned);
+                    
+                    let color = 'var(--color-bonus)';
+                    if (evt.type === 'vest') color = 'var(--color-vest)';
+                    
+                    return (
+                      <g
+                        key={`cum-comp-evt-${evt.id}`}
+                        className="chart-comp-node"
+                        style={{ '--node-color': color }}
+                        transform={`translate(${x}, ${y})`}
+                        onMouseEnter={() => {
+                          setHoveredItem({
+                            x: x,
+                            y: y - 15,
+                            title: evt.title,
+                            value: pppMode ? formatFullCurrency(convertValue(evt.amount, evt.currency, evt.country)) : formatFullCurrency(evt.amount, evt.currency),
+                            date: formatDateLabel(evt.date),
+                            type: evt.type,
+                            company: evt.company || 'Self-Employed',
+                            country: evt.country,
+                            location: evt.location,
+                            category: 'comp'
+                          });
+                        }}
+                        onMouseLeave={() => setHoveredItem(null)}
+                      >
+                        <circle
+                          r="5"
+                          fill={color}
+                          stroke="#fff"
+                          strokeWidth="1.5"
+                          style={{ filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))' }}
+                        />
+                      </g>
+                    );
+                  });
+                })()}
+              </g>
+            )}
 
             {/* Y Axis Line */}
             <line 
@@ -782,291 +1369,6 @@ export default function CompChart({
               x2={dimensions.width - padding.right} 
               y2={dimensions.height - padding.bottom} 
             />
-            {/* Salary Change Event Nodes (Diamond/Square Indicators) */}
-            {sortedSalaryEvents.map((evt, idx) => {
-              // Starting base doesn't need a hike icon unless user wants it.
-              if (idx === 0) return null;
-              if (!filters[evt.type]) return null;
-              
-              const x = getX(evt.date);
-              const y = getY(convertValue(evt.salary, evt.currency, evt.country));
-              
-              let color = 'var(--color-hike)';
-              if (evt.type === 'promotion') color = 'var(--color-promotion)';
-              if (evt.type === 'jobswitch') color = 'var(--color-switch)';
-  
-              return (
-                <g 
-                   key={`salary-evt-${evt.id}`}
-                   className="chart-event-node"
-                   style={{ '--node-color': color }}
-                   transform={`translate(${x}, ${y})`}
-                   onMouseEnter={() => {
-                      // Percentage change calculation
-                      const prevEvent = sortedSalaryEvents[idx - 1];
-                      const prevSalary = convertValue(prevEvent.salary, prevEvent.currency, prevEvent.country);
-                      const currSalary = convertValue(evt.salary, evt.currency, evt.country);
-                      const pctDiff = prevSalary !== 0 ? ((currSalary - prevSalary) / prevSalary) * 100 : 0;
-                      
-                      // Calculate net salaries (annualized)
-                      const prevNetVal = prevEvent.monthlyNetSalary !== undefined && prevEvent.monthlyNetSalary !== null
-                        ? prevEvent.monthlyNetSalary * 12
-                        : prevEvent.salary;
-                      const currNetVal = evt.monthlyNetSalary !== undefined && evt.monthlyNetSalary !== null
-                        ? evt.monthlyNetSalary * 12
-                        : evt.salary;
-                      
-                      const prevNetSalary = convertValue(prevNetVal, prevEvent.currency, prevEvent.country);
-                      const currNetSalary = convertValue(currNetVal, evt.currency, evt.country);
-                      const netHikeDiff = (currNetSalary - prevNetSalary) / 12;
-                      const pctNetDiff = prevNetSalary !== 0 ? ((currNetSalary - prevNetSalary) / prevNetSalary) * 100 : 0;
-
-                      setHoveredItem({
-                        x: x,
-                        y: y - 10,
-                        title: evt.title,
-                        value: `${formatFullCurrency(currSalary)}/yr`,
-                        subValue: pctDiff > 0 ? `+${pctDiff.toFixed(0)}% gross change` : `${pctDiff.toFixed(0)}% gross change`,
-                        date: formatDateLabel(evt.date),
-                        type: evt.type,
-                        company: evt.company || 'Self-Employed',
-                        country: evt.country,
-                        location: evt.location,
-                        category: 'salary',
-                        convertedGross: currSalary / 12,
-                        convertedNet: evt.monthlyNetSalary !== undefined && evt.monthlyNetSalary !== null 
-                          ? convertValue(evt.monthlyNetSalary, evt.currency, evt.country) 
-                          : convertValue(evt.salary / 12, evt.currency, evt.country),
-                        netHikeDiff: netHikeDiff,
-                        pctNetDiff: pctNetDiff
-                      });
-                    }}
-                   onMouseLeave={() => setHoveredItem(null)}
-                >
-                  {/* Glowing background */}
-                  <rect 
-                    x="-7" 
-                    y="-7" 
-                    width="14" 
-                    height="14" 
-                    rx="2"
-                    transform="rotate(45)"
-                    fill={color} 
-                    opacity="0.3"
-                    stroke={color}
-                    strokeWidth="4"
-                  />
-                  {/* Central Node */}
-                  <rect 
-                    x="-5" 
-                    y="-5" 
-                    width="10" 
-                    height="10" 
-                    rx="1"
-                    transform="rotate(45)"
-                    fill={color} 
-                    stroke="#fff"
-                    strokeWidth="1.5"
-                  />
-                </g>
-              );
-            })}
-
-            {/* Financial Overlay Circles (Bonus, Grant, Vest) */}
-            {(() => {
-              // Group financial events by date to draw overlapping ones as concentric doughnuts
-              const filteredCompEvents = compEvents.filter(evt => filters[evt.type]);
-              const compGroupsByDate = {};
-              filteredCompEvents.forEach((evt) => {
-                const normalizedDate = normalizeDate(evt.date);
-                if (!compGroupsByDate[normalizedDate]) {
-                  compGroupsByDate[normalizedDate] = [];
-                }
-                compGroupsByDate[normalizedDate].push(evt);
-              });
- 
-              return Object.entries(compGroupsByDate).map(([date, group]) => {
-                const x = getX(date);
-                const activeSalary = getSalaryAtDate(date);
-                const y = getY(activeSalary);
-                
-                // Sort events in this group by active display currency amount descending (largest first)
-                const sortedGroup = [...group].sort((a, b) => {
-                  const valA = convertValue(a.amount, a.currency, a.country);
-                  const valB = convertValue(b.amount, b.currency, b.country);
-                  return valB - valA;
-                });
-  
-                // Calculate radii:
-                // Smallest event (innermost) has Area proportional to its amount.
-                // Each larger event (outer rings) has its Ring Area equal to its amount.
-                // Ring Area = PI * R_outer^2 - PI * R_inner^2 = TargetArea
-                // => R_outer = sqrt(R_inner^2 + R_base^2)
-                const groupWithRadii = [];
-                let prevRadius = 0;
-                for (let i = sortedGroup.length - 1; i >= 0; i--) {
-                  const evt = sortedGroup[i];
-                  const convertedAmt = convertValue(evt.amount, evt.currency, evt.country);
-                  const baseRadius = getCircleRadius(convertedAmt);
-                  
-                  let radius;
-                  if (i === sortedGroup.length - 1) {
-                    // Innermost circle
-                    radius = baseRadius;
-                  } else {
-                    // Outer doughnut ring
-                    const areaSumRadius = Math.sqrt(prevRadius * prevRadius + baseRadius * baseRadius);
-                    // Enforce at least 6px ring thickness for hover ease
-                    radius = Math.max(areaSumRadius, prevRadius + 6);
-                  }
-                  
-                  groupWithRadii.unshift({ evt, radius });
-                  prevRadius = radius;
-                }
- 
-                return (
-                  <g key={`comp-group-${date}`}>
-                    {groupWithRadii.map(({ evt, radius }, idx) => {
-                      // Color definitions
-                      let fillColor = 'rgba(16, 185, 129, 0.22)';
-                      let strokeColor = 'var(--color-bonus)';
-                      if (evt.type === 'grant') {
-                        fillColor = 'rgba(245, 158, 11, 0.22)';
-                        strokeColor = 'var(--color-grant)';
-                      } else if (evt.type === 'vest') {
-                        fillColor = 'rgba(168, 85, 247, 0.22)';
-                        strokeColor = 'var(--color-vest)';
-                      }
- 
-                      const isInnermost = idx === groupWithRadii.length - 1;
- 
-                      if (isInnermost) {
-                        // Innermost circle (standard filled circle)
-                        return (
-                          <g
-                            key={`comp-evt-${evt.id}`}
-                            className="chart-comp-node"
-                            style={{ '--node-color': strokeColor }}
-                            transform={`translate(${x}, ${y})`}
-                            onMouseEnter={() => {
-                              setHoveredItem({
-                                x: x,
-                                y: y - radius - 10,
-                                title: evt.title,
-                                value: pppMode ? formatFullCurrency(convertValue(evt.amount, evt.currency, evt.country)) : formatFullCurrency(evt.amount, evt.currency),
-                                date: formatDateLabel(evt.date),
-                                type: evt.type,
-                                company: evt.company || 'Self-Employed',
-                                country: evt.country,
-                                location: evt.location,
-                                category: 'comp'
-                              });
-                            }}
-                            onMouseLeave={() => setHoveredItem(null)}
-                          >
-                            {/* Outer border & body fill */}
-                            <circle
-                              r={radius}
-                              fill={fillColor}
-                              stroke={strokeColor}
-                              strokeWidth="2"
-                              style={{ filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.4))' }}
-                            />
-                            {/* Interactive inner core */}
-                            <circle
-                              r={Math.max(radius - 4, 3)}
-                              fill="transparent"
-                              stroke="rgba(255,255,255,0.15)"
-                              strokeWidth="1"
-                              strokeDasharray="2,2"
-                            />
-                            {/* Text value outline & overlay at the top of the circle */}
-                            <text
-                              className="chart-comp-label"
-                              textAnchor="middle"
-                              y={-radius - 5}
-                              fill="var(--text-primary)"
-                              stroke="var(--bg-primary)"
-                              strokeWidth="2.5px"
-                              paintOrder="stroke"
-                              strokeLinejoin="round"
-                              fontSize="9px"
-                              fontWeight="700"
-                              fontFamily="var(--font-mono)"
-                              pointerEvents="none"
-                            >
-                              {formatShortCurrency(evt.amount, evt.currency)}
-                            </text>
-                          </g>
-                        );
-                      } else {
-                        // Outer doughnut ring representing the larger payout
-                        const nextRadius = groupWithRadii[idx + 1].radius;
-                        const strokeWidth = radius - nextRadius;
-                        const ringRadius = (radius + nextRadius) / 2;
- 
-                        return (
-                          <g
-                            key={`comp-evt-${evt.id}`}
-                            className="chart-comp-node"
-                            style={{ '--node-color': strokeColor }}
-                            transform={`translate(${x}, ${y})`}
-                            onMouseEnter={() => {
-                              setHoveredItem({
-                                x: x,
-                                y: y - radius - 10,
-                                title: evt.title,
-                                value: pppMode ? formatFullCurrency(convertValue(evt.amount, evt.currency, evt.country)) : formatFullCurrency(evt.amount, evt.currency),
-                                date: formatDateLabel(evt.date),
-                                type: evt.type,
-                                company: evt.company || 'Self-Employed',
-                                country: evt.country,
-                                location: evt.location,
-                                category: 'comp'
-                              });
-                            }}
-                            onMouseLeave={() => setHoveredItem(null)}
-                          >
-                            {/* Doughnut ring path using thick transparent stroke */}
-                            <circle
-                              r={ringRadius}
-                              fill="none"
-                              stroke={strokeColor}
-                              strokeWidth={strokeWidth}
-                              strokeOpacity="0.22"
-                            />
-                            {/* Clean outer border of the doughnut */}
-                            <circle
-                              r={radius}
-                              fill="none"
-                              stroke={strokeColor}
-                              strokeWidth="1.5"
-                            />
-                            {/* Text value outline & overlay at the top of the ring */}
-                            <text
-                              className="chart-comp-label"
-                              textAnchor="middle"
-                              y={-radius - 5}
-                              fill="var(--text-primary)"
-                              stroke="var(--bg-primary)"
-                              strokeWidth="2.5px"
-                              paintOrder="stroke"
-                              strokeLinejoin="round"
-                              fontSize="9px"
-                              fontWeight="700"
-                              fontFamily="var(--font-mono)"
-                              pointerEvents="none"
-                            >
-                              {formatShortCurrency(evt.amount, evt.currency)}
-                            </text>
-                          </g>
-                        );
-                      }
-                    })}
-                  </g>
-                );
-              });
-            })()}
           </svg>
         )}
 

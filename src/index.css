@@ -31,6 +31,10 @@
   --color-promotion: #ec4899; /* Pink */
   --color-hike: #14b8a6; /* Teal */
   --color-switch: #3b82f6; /* Blue */
+
+  /* Average Line Colors (Dark Mode) */
+  --color-avg-monthly: #38bdf8; /* Sky Blue */
+  --color-avg-annual: #818cf8; /* Indigo Accent */
   
   /* Shadows & Glassmorphism */
   --glass-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5);
@@ -64,6 +68,10 @@ body[data-theme="light"] {
   --color-bonus: #059669;
   --color-grant: #d97706;
   --color-vest: #7c3aed;
+
+  /* Average Line Colors (Light Mode) */
+  --color-avg-monthly: #0284c7; /* Darker Cyan */
+  --color-avg-annual: #4f46e5; /* Darker Indigo */
 }
 
 body[data-theme="light"] {
@@ -539,6 +547,64 @@ input:focus, select:focus, textarea:focus {
 .chart-line-net-shadow {
   fill: url(#net-salary-gradient);
   opacity: 0.06;
+  transition: all 0.5s ease-in-out;
+  pointer-events: none;
+}
+
+.chart-line-cumulative-realized {
+  fill: none;
+  stroke: var(--color-vest);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 8px rgba(168, 85, 247, 0.3));
+  transition: all 0.5s ease-in-out;
+}
+
+.chart-line-cumulative-realized-shadow {
+  fill: url(#cumulative-realized-gradient);
+  opacity: 0.08; /* Low opacity so it is not dark in light mode */
+  transition: all 0.5s ease-in-out;
+  pointer-events: none;
+}
+
+.chart-line-cumulative-projected {
+  fill: none;
+  stroke: var(--color-vest);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 4,4;
+  filter: drop-shadow(0 2px 4px rgba(168, 85, 247, 0.25));
+  transition: all 0.5s ease-in-out;
+}
+
+.chart-line-cumulative-projected-shadow {
+  fill: url(#cumulative-projected-gradient);
+  opacity: 0.05; /* Low opacity so it is not dark in light mode */
+  transition: all 0.5s ease-in-out;
+  pointer-events: none;
+}
+
+.chart-line-avg-monthly {
+  fill: none;
+  stroke: var(--color-avg-monthly);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 4,4;
+  filter: drop-shadow(0 2px 4px rgba(14, 165, 233, 0.25));
+  transition: all 0.5s ease-in-out;
+  pointer-events: none;
+}
+
+.chart-line-avg-annual {
+  fill: none;
+  stroke: var(--color-avg-annual);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 6px rgba(99, 102, 241, 0.25));
   transition: all 0.5s ease-in-out;
   pointer-events: none;
 }
