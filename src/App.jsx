@@ -5,10 +5,8 @@ import DashboardStats from './components/DashboardStats';
 import { Sparkles, X, LogOut, Eye, EyeOff, Check } from 'lucide-react';
 import ShareCardModal from './components/ShareCardModal';
 import AuthScreen from './components/AuthScreen';
-import OnboardingPanel from './components/OnboardingPanel';
 import api from './utils/api';
-import { EXCHANGE_RATES, DEFAULT_PPP_FACTORS, COUNTRIES } from './utils/currency';
-import { parseCSVFile } from './utils/csvParser';
+import { EXCHANGE_RATES, DEFAULT_PPP_FACTORS, COUNTRIES, convertCurrency, convertToPPP } from './utils/currency';
 import { sha256 } from './utils/crypto';
 
 export default function App() {
@@ -28,6 +26,12 @@ export default function App() {
   const [userName, setUserName] = useState('');
   const [showUserModal, setShowUserModal] = useState(false);
   const [modalName, setModalName] = useState('');
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+
+  const handleOpenUserModal = () => {
+    setModalName(userName);
+    setShowUserModal(true);
+  };
 
   // Profile Settings password states
   const [profilePassword, setProfilePassword] = useState('');
@@ -53,15 +57,7 @@ export default function App() {
   const [showRatesModal, setShowRatesModal] = useState(false);
   const [showPppModal, setShowPppModal] = useState(false);
 
-  const [hasGuestData, setHasGuestData] = useState(() => {
-    try {
-      const savedSalary = localStorage.getItem('comp_graph_salary_events');
-      return savedSalary && JSON.parse(savedSalary).length > 0;
-    } catch (err) {
-      console.warn('Error reading local storage guest data:', err);
-      return false;
-    }
-  });
+
 
   // Apply theme dynamically to body based on setting
   useEffect(() => {
@@ -117,6 +113,7 @@ export default function App() {
         setCompEvents(events.compEvents || []);
       } catch (err) {
         console.error('Failed to load user backend data:', err);
+        alert(`Server connection failed: ${err.message}`);
       }
     };
 
@@ -194,6 +191,7 @@ export default function App() {
     setSalaryEvents([]);
     setCompEvents([]);
     setUserName('');
+    setShowProfileDropdown(false);
   };
 
   const handleThemeChange = async (newTheme) => {
@@ -302,17 +300,7 @@ export default function App() {
     navigator.clipboard.writeText(generated);
   };
 
-  const handleResetData = async () => {
-    if (!window.confirm('WARNING: Are you sure you want to permanently delete all salary and compensation events? This action cannot be undone.')) {
-      return;
-    }
-    try {
-      await handleBulkSync([], []);
-      alert('All career progression data has been reset.');
-    } catch (err) {
-      alert(`Failed to reset data: ${err.message}`);
-    }
-  };
+
 
   const handleAddSalaryEvent = async (event) => {
     const newEvent = { id: `s_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`, ...event };
@@ -366,51 +354,116 @@ export default function App() {
     } catch (err) { alert(`Failed to sync: ${err.message}`); }
   };
 
-  const handleImportCSV = (parsedData) => handleBulkSync(parsedData.salaryEvents, parsedData.compEvents);
-
-  const handleImportJSON = async ({ userName: importedName, salaryEvents: parsedSalary, compEvents: parsedComp, startDate: parsedStart, currency: parsedCurr }) => {
-    try {
-      await api.events.syncEvents(parsedSalary, parsedComp);
-      setSalaryEvents(parsedSalary);
-      setCompEvents(parsedComp);
-      const updates = {};
-      if (importedName) { updates.name = importedName; setUserName(importedName); }
-      if (parsedStart) { updates.startDate = parsedStart; setStartDate(parsedStart); }
-      if (parsedCurr) { updates.currency = parsedCurr; setCurrency(parsedCurr); }
-      if (Object.keys(updates).length > 0) await api.auth.updateSettings(updates);
-    } catch (err) { alert(`Import failed: ${err.message}`); }
-  };
-
-  const handleMigrateGuestData = async () => {
-    try {
-      const savedSalary = JSON.parse(localStorage.getItem('comp_graph_salary_events') || '[]');
-      const savedComp = JSON.parse(localStorage.getItem('comp_graph_comp_events') || '[]');
-      await api.events.syncEvents(savedSalary, savedComp);
-      setSalaryEvents(savedSalary);
-      setCompEvents(savedComp);
-      localStorage.removeItem('comp_graph_salary_events');
-      localStorage.removeItem('comp_graph_comp_events');
-      setHasGuestData(false);
-    } catch (err) { alert(`Migration failed: ${err.message}`); }
-  };
-
-  const handleClearAll = async () => {
-    if (window.confirm("Clear all data?")) {
-      try {
-        await api.events.syncEvents([], []);
-        setSalaryEvents([]);
-        setCompEvents([]);
-      } catch (err) { alert(`Failed: ${err.message}`); }
+  const convertValue = (amount, eventCurrency, countryCode) => {
+    if (pppMode) {
+      return convertToPPP(amount, eventCurrency, countryCode, exchangeRates, pppFactors);
+    } else {
+      return convertCurrency(amount, eventCurrency, currency, exchangeRates);
     }
   };
+
+  const exportJSON = () => {
+    const data = {
+      userName: userName || '',
+      salaryEvents,
+      compEvents,
+      startDate: startDate || '2024-01',
+      currency: currency || 'USD',
+      exportDate: new Date().toISOString()
+    };
+    
+    const jsonBlob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(jsonBlob);
+    
+    const a = document.createElement('a');
+    a.download = `career-compensation-data-${startDate || '2024-01'}.json`;
+    a.href = url;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const exportCSV = () => {
+    const escapeCSV = (val) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n') || str.includes('\r')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const allEvents = [
+      ...salaryEvents.map(e => ({
+        date: e.date,
+        category: 'Salary Remuneration',
+        type: e.type,
+        origVal: e.salary,
+        origCurr: e.currency || 'USD',
+        convVal: convertValue(e.salary, e.currency || 'USD', e.country),
+        company: e.company || 'Self-Employed',
+        country: e.country || '',
+        location: e.location || '',
+        title: e.title || '',
+        monthlyGross: e.salary / 12,
+        monthlyNet: e.monthlyNetSalary || ''
+      })),
+      ...compEvents.map(e => ({
+        date: e.date,
+        category: 'Compensation',
+        type: e.type,
+        origVal: e.amount,
+        origCurr: e.currency || 'USD',
+        convVal: convertValue(e.amount, e.currency || 'USD', e.country),
+        company: e.company || 'Self-Employed',
+        country: e.country || '',
+        location: e.location || '',
+        title: e.title || '',
+        monthlyGross: '',
+        monthlyNet: ''
+      }))
+    ].sort((a, b) => {
+      const normA = a.date.length === 7 ? `${a.date}-01` : a.date;
+      const normB = b.date.length === 7 ? `${b.date}-01` : b.date;
+      return normA.localeCompare(normB);
+    });
+
+    const headers = ['Date', 'Category', 'Type', 'Original Amount', 'Original Currency', 'Converted Amount', 'Converted Currency', 'Monthly Gross', 'Monthly Net', 'Employer', 'Country', 'Location', 'Title'];
+    const rows = allEvents.map(e => [
+      escapeCSV(e.date),
+      escapeCSV(e.category),
+      escapeCSV(e.type),
+      e.origVal,
+      escapeCSV(e.origCurr),
+      e.convVal,
+      escapeCSV(pppMode ? 'USD (PPP)' : currency),
+      e.monthlyGross,
+      e.monthlyNet,
+      escapeCSV(e.company),
+      escapeCSV(e.country),
+      escapeCSV(e.location),
+      escapeCSV(e.title)
+    ]);
+
+    const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    const csvBlob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(csvBlob);
+
+    const a = document.createElement('a');
+    a.download = `career-compensation-data-${startDate || '2024-01'}.csv`;
+    a.href = url;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+
+
+
 
   if (!token) return <AuthScreen onAuthSuccess={handleAuthSuccess} />;
 
   return (
     <div className="app-container">
-      {salaryEvents.length === 0 && (
-        <OnboardingPanel onImportCSV={handleImportCSV} onImportJSON={handleImportJSON} onMigrateGuest={handleMigrateGuestData} hasGuestData={hasGuestData} />
-      )}
+
       {showUserModal && (
         <div className="modal-overlay animate-fade-in" style={{ zIndex: 999 }}>
           <div className="modal-content glass-panel profile-modal" style={{ padding: '2rem', maxWidth: '600px', width: '90%', maxHeight: '90vh', overflowY: 'auto', position: 'relative' }}>
@@ -430,9 +483,9 @@ export default function App() {
               {/* Section 1: Edit Profile Info */}
               <div style={{ borderBottom: '1px solid var(--border-color)', paddingBottom: '1.5rem' }}>
                 <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--text-secondary)' }}>Personal Details</h3>
-                <form onSubmit={handleUserSubmit} style={{ display: 'flex', gap: '10px' }}>
-                  <input type="text" value={modalName} onChange={(e) => setModalName(e.target.value)} required style={{ flex: 1, padding: '0.5rem 0.75rem', background: 'rgba(255, 255, 255, 0.04)', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '0.9rem' }} />
-                  <button type="submit" className="btn btn-primary" style={{ padding: '0.5rem 1rem' }}>Save Name</button>
+                <form onSubmit={handleUserSubmit} style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                  <input type="text" value={modalName} onChange={(e) => setModalName(e.target.value)} required style={{ flex: '1 1 200px', minWidth: 0, padding: '0.5rem 0.75rem', background: 'rgba(255, 255, 255, 0.04)', border: '1px solid var(--border-color)', borderRadius: '8px', color: 'var(--text-primary)', fontSize: '0.9rem' }} />
+                  <button type="submit" className="btn btn-primary" style={{ padding: '0.5rem 1.25rem', flex: '0 0 auto', whiteSpace: 'nowrap' }}>Save Name</button>
                 </form>
               </div>
 
@@ -524,86 +577,42 @@ export default function App() {
                 </form>
               </div>
 
-              {/* Section 3: Data Actions (Import/Reset) */}
+              {/* Section 3: Data Actions (Export/Reset) */}
               <div>
                 <h3 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '0.75rem', color: 'var(--text-secondary)' }}>Data Maintenance & Portability</h3>
                 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
-                    {/* CSV Importer */}
+                    {/* CSV Exporter */}
                     <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '12px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>Import CSV File</span>
-                      <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: 0 }}>Upload CSV spreadsheet matching exported columns.</p>
-                      <input 
-                        type="file" 
-                        accept=".csv" 
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          try {
-                            const parsed = await parseCSVFile(file);
-                            if (parsed.salaryEvents.length === 0 && parsed.compEvents.length === 0) {
-                              throw new Error('No valid events found in CSV.');
-                            }
-                            await handleImportCSV(parsed);
-                            alert('Data imported successfully from CSV!');
-                          } catch (err) {
-                            alert(`CSV Import failed: ${err.message}`);
-                          }
-                          e.target.value = '';
-                        }} 
-                        style={{ fontSize: '0.75rem', marginTop: 'auto', display: 'block', width: '100%' }} 
-                      />
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>Export CSV Spreadsheet</span>
+                      <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: 0 }}>Download all events in standard CSV format for Excel/Sheets.</p>
+                      <button 
+                        type="button"
+                        onClick={exportCSV} 
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.75rem', marginTop: 'auto', display: 'block', width: '100%', padding: '0.4rem' }} 
+                      >
+                        📥 Export CSV
+                      </button>
                     </div>
 
-                    {/* JSON Importer */}
+                    {/* JSON Exporter */}
                     <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-color)', padding: '12px', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>Import JSON Backup</span>
-                      <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: 0 }}>Restore complete database history from JSON backup.</p>
-                      <input 
-                        type="file" 
-                        accept=".json" 
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          const reader = new FileReader();
-                          reader.onload = async (event) => {
-                            try {
-                              const parsed = JSON.parse(event.target.result);
-                              await handleImportJSON({
-                                userName: parsed.userName || '',
-                                salaryEvents: parsed.salaryEvents || [],
-                                compEvents: parsed.compEvents || [],
-                                startDate: parsed.startDate || '2024-01',
-                                currency: parsed.currency || 'USD'
-                              });
-                              alert('Data imported successfully from JSON!');
-                            } catch (err) {
-                              alert(`JSON Import failed: ${err.message}`);
-                            }
-                          };
-                          reader.readAsText(file);
-                          e.target.value = '';
-                        }} 
-                        style={{ fontSize: '0.75rem', marginTop: 'auto', display: 'block', width: '100%' }} 
-                      />
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>Export JSON Backup</span>
+                      <p style={{ fontSize: '0.7rem', color: 'var(--text-muted)', margin: 0 }}>Download complete database backup in JSON format.</p>
+                      <button 
+                        type="button"
+                        onClick={exportJSON} 
+                        className="btn btn-secondary"
+                        style={{ fontSize: '0.75rem', marginTop: 'auto', display: 'block', width: '100%', padding: '0.4rem' }} 
+                      >
+                        📥 Export JSON
+                      </button>
                     </div>
                   </div>
 
-                  {/* Reset Data Button */}
-                  <div style={{ background: 'rgba(239, 68, 68, 0.02)', border: '1px solid rgba(239, 68, 68, 0.15)', padding: '12px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', marginTop: '8px', flexWrap: 'wrap' }}>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#f87171' }}>Reset Profile Data</span>
-                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Delete all history milestones permanently. This cannot be undone.</span>
-                    </div>
-                    <button 
-                      type="button" 
-                      onClick={handleResetData}
-                      style={{ background: '#ef4444', color: '#ffffff', border: 'none', padding: '6px 12px', borderRadius: '6px', fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}
-                    >
-                      Reset Data
-                    </button>
-                  </div>
+
                 </div>
               </div>
             </div>
@@ -613,9 +622,6 @@ export default function App() {
       <header className="header animate-fade-in">
         <div className="header-title-area">
           <h1><Sparkles size={28} style={{ color: 'var(--color-primary)' }} /> {userName}'s CompGraph</h1>
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            Account: <strong style={{ color: 'var(--text-secondary)' }}>{userName}</strong> • <button onClick={() => setShowUserModal(true)} style={{ background: 'none', border: 'none', color: 'var(--color-primary)', textDecoration: 'underline', cursor: 'pointer', fontWeight: 600, padding: 0 }}>Edit Profile</button> • <button onClick={handleLogout} style={{ background: 'none', border: 'none', color: '#f87171', textDecoration: 'underline', cursor: 'pointer', fontWeight: 600, padding: 0 }}><LogOut size={11} /> Log Out</button>
-          </p>
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', alignItems: 'center' }}>
           <div className="preset-selector">
@@ -664,7 +670,131 @@ export default function App() {
           <CompChart salaryEvents={salaryEvents} compEvents={compEvents} startDate={startDate} currency={currency} userName={userName} onOpenShareCard={() => setShowShareModal(true)} pppMode={pppMode} exchangeRates={exchangeRates} pppFactors={pppFactors} />
         </div>
         <aside className="sidebar-panel">
-          <EventForm salaryEvents={salaryEvents} compEvents={compEvents} onAddSalaryEvent={handleAddSalaryEvent} onAddCompEvent={handleAddCompEvent} onEditSalaryEvent={handleEditSalaryEvent} onEditCompEvent={handleEditCompEvent} onDeleteSalaryEvent={handleDeleteSalaryEvent} onDeleteCompEvent={handleDeleteCompEvent} startDate={startDate} currency={currency} onClearAll={handleClearAll} />
+          {/* User Profile Dropdown Widget */}
+          <div className="profile-dropdown-container" style={{ position: 'relative', width: '100%' }}>
+            <button 
+              onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '0.75rem 1rem',
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid var(--border-color)',
+                borderRadius: '12px',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease',
+              }}
+              className="profile-dropdown-trigger"
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                <div style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  background: 'var(--color-primary)',
+                  color: '#ffffff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 700,
+                  fontSize: '0.9rem',
+                  textTransform: 'uppercase',
+                  flexShrink: 0
+                }}>
+                  {userName ? userName[0] : 'U'}
+                </div>
+                <div style={{ textAlign: 'left', minWidth: 0 }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {userName}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    Active Account
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', color: 'var(--text-muted)', transform: showProfileDropdown ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.2s ease' }}>
+                <span style={{ fontSize: '0.6rem' }}>▼</span>
+              </div>
+            </button>
+            
+            {showProfileDropdown && (
+              <div 
+                style={{
+                  position: 'absolute',
+                  top: '105%',
+                  left: 0,
+                  right: 0,
+                  background: 'var(--bg-card)',
+                  backdropFilter: 'blur(20px)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '12px',
+                  boxShadow: '0 10px 25px rgba(0, 0, 0, 0.3)',
+                  zIndex: 100,
+                  padding: '0.5rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px',
+                  animation: 'fadeIn 0.2s ease-out'
+                }}
+              >
+                <button
+                  onClick={() => {
+                    handleOpenUserModal();
+                    setShowProfileDropdown(false);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '0.6rem 0.75rem',
+                    background: 'none',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: 'var(--text-secondary)',
+                    fontSize: '0.85rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    width: '100%',
+                    transition: 'all 0.2s ease'
+                  }}
+                  className="dropdown-item"
+                >
+                  ⚙️ Edit Profile & Settings
+                </button>
+                <button
+                  onClick={() => {
+                    handleLogout();
+                    setShowProfileDropdown(false);
+                  }}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    padding: '0.6rem 0.75rem',
+                    background: 'none',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: '#f87171',
+                    fontSize: '0.85rem',
+                    fontWeight: 500,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    width: '100%',
+                    transition: 'all 0.2s ease'
+                  }}
+                  className="dropdown-item text-danger"
+                >
+                  🚪 Log Out
+                </button>
+              </div>
+            )}
+          </div>
+
+          <EventForm salaryEvents={salaryEvents} compEvents={compEvents} onAddSalaryEvent={handleAddSalaryEvent} onAddCompEvent={handleAddCompEvent} onEditSalaryEvent={handleEditSalaryEvent} onEditCompEvent={handleEditCompEvent} onDeleteSalaryEvent={handleDeleteSalaryEvent} onDeleteCompEvent={handleDeleteCompEvent} startDate={startDate} currency={currency} />
         </aside>
       </div>
       <ShareCardModal isOpen={showShareModal} onClose={() => setShowShareModal(false)} salaryEvents={salaryEvents} compEvents={compEvents} startDate={startDate} currency={currency} userName={userName} pppMode={pppMode} exchangeRates={exchangeRates} pppFactors={pppFactors} />

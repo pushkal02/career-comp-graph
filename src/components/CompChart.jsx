@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Download, FileSpreadsheet, Upload, Sparkles, Image } from 'lucide-react';
+import { Download, FileSpreadsheet, Sparkles, Image } from 'lucide-react';
 import { convertCurrency, convertToPPP, COUNTRIES } from '../utils/currency';
 
 export default function CompChart({ 
@@ -8,14 +8,12 @@ export default function CompChart({
   startDate, 
   currency, 
   userName, 
-  onImportJSON, 
   onOpenShareCard,
   pppMode,
   exchangeRates,
   pppFactors
 }) {
   const containerRef = useRef(null);
-  const fileInputRef = useRef(null);
   const [dimensions, setDimensions] = useState({ width: 800, height: 450 });
   const [hoveredItem, setHoveredItem] = useState(null); // { x, y, title, value, date, type, category }
 
@@ -276,37 +274,7 @@ export default function CompChart({
     URL.revokeObjectURL(url);
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const parsed = JSON.parse(event.target.result);
-        if (!parsed.salaryEvents || !Array.isArray(parsed.salaryEvents)) {
-          throw new Error("Invalid backup: salaryEvents is missing or not an array.");
-        }
-        if (!parsed.compEvents || !Array.isArray(parsed.compEvents)) {
-          throw new Error("Invalid backup: compEvents is missing or not an array.");
-        }
-        
-        if (onImportJSON) {
-          onImportJSON({
-            userName: parsed.userName || '',
-            salaryEvents: parsed.salaryEvents,
-            compEvents: parsed.compEvents,
-            startDate: parsed.startDate || '2024-01',
-            currency: parsed.currency || 'USD'
-          });
-        }
-      } catch (err) {
-        alert(`Failed to import JSON: ${err.message}`);
-      }
-      e.target.value = '';
-    };
-    reader.readAsText(file);
-  };
 
   // Coordinate conversion utilities
   const getX = (dateStr) => {
@@ -635,21 +603,7 @@ export default function CompChart({
             >
               <FileSpreadsheet size={13} /> Export CSV
             </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="btn btn-secondary"
-              style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem', width: 'auto', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-              title="Import data from JSON backup"
-            >
-              <Upload size={13} /> Import JSON
-            </button>
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept=".json"
-              style={{ display: 'none' }}
-            />
+
           </div>
         </div>
       </div>

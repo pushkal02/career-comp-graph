@@ -67,11 +67,7 @@ export const api = {
   events: {
     getEvents: () => 
       request('/events'),
-    syncEvents: (salaryEvents, compEvents) => 
-      request('/events/sync', {
-        method: 'POST',
-        body: JSON.stringify({ salaryEvents, compEvents })
-      }),
+
     createSalary: (event) => 
       request('/events/salary', {
         method: 'POST',

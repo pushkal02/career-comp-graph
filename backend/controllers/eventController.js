@@ -17,53 +17,7 @@ export const getEvents = async (req, res) => {
   }
 };
 
-export const syncEvents = async (req, res) => {
-  try {
-    const { salaryEvents = [], compEvents = [] } = req.body;
 
-    const mappedSalaries = salaryEvents.map(e => ({
-      id: e.id,
-      date: e.date,
-      salary: parseFloat(e.salary),
-      type: e.type,
-      title: e.title || '',
-      company: e.company || '',
-      currency: e.currency || null,
-      country: e.country || null,
-      location: e.location || null,
-      monthlyNetSalary: e.monthlyNetSalary !== undefined && e.monthlyNetSalary !== null ? parseFloat(e.monthlyNetSalary) : null,
-      createdAt: e.createdAt ? new Date(e.createdAt) : new Date(),
-      updatedAt: e.updatedAt ? new Date(e.updatedAt) : new Date()
-    }));
-
-    const mappedComps = compEvents.map(e => ({
-      id: e.id,
-      date: e.date,
-      amount: parseFloat(e.amount),
-      type: e.type,
-      title: e.title || '',
-      company: e.company || '',
-      currency: e.currency || null,
-      country: e.country || null,
-      location: e.location || null,
-      createdAt: e.createdAt ? new Date(e.createdAt) : new Date(),
-      updatedAt: e.updatedAt ? new Date(e.updatedAt) : new Date()
-    }));
-
-    await prisma.user.update({
-      where: { id: req.userId },
-      data: {
-        salaryEvents: mappedSalaries,
-        compEvents: mappedComps
-      }
-    });
-
-    return res.json({ success: true, message: 'Timeline synced successfully.' });
-  } catch (err) {
-    console.error('Sync events error:', err);
-    return res.status(500).json({ error: 'Internal server error syncing events.' });
-  }
-};
 
 export const createSalaryEvent = async (req, res) => {
   try {

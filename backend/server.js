@@ -9,7 +9,6 @@ import { verifyToken } from './middleware/auth.js';
 import { signup, login, getProfile, updateSettings } from './controllers/authController.js';
 import {
   getEvents,
-  syncEvents,
   createSalaryEvent,
   updateSalaryEvent,
   deleteSalaryEvent,
@@ -38,7 +37,7 @@ app.put('/api/auth/settings', verifyToken, updateSettings);
 
 // API Event Routes
 app.get('/api/events', verifyToken, getEvents);
-app.post('/api/events/sync', verifyToken, syncEvents);
+
 
 app.post('/api/events/salary', verifyToken, createSalaryEvent);
 app.put('/api/events/salary/:id', verifyToken, updateSalaryEvent);
