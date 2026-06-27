@@ -77,3 +77,123 @@ export function convertToPPP(amount, eventCurrency, countryCode, rates = EXCHANG
   return localAmount / pppFactor;
 }
 
+/**
+ * Parses vesting tranches from an RSU event.
+ */
+export function parseRsuTranches(event) {
+  if (!event || event.type !== 'rsu') return [];
+  try {
+    if (event.location && typeof event.location === 'string' && (event.location.startsWith('{') || event.location.startsWith('['))) {
+      const parsed = JSON.parse(event.location);
+      if (parsed && Array.isArray(parsed.tranches)) {
+        return parsed.tranches;
+      }
+      if (Array.isArray(parsed)) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to parse RSU tranches', err);
+  }
+  return [];
+}
+
+/**
+ * Returns the active company at a given date based on salary event history.
+ */
+export function getActiveCompanyAt(date, salaryEvents, defaultValue = '') {
+  const defVal = defaultValue || '';
+  if (!salaryEvents || salaryEvents.length === 0) return defVal;
+  
+  const sorted = [...salaryEvents].sort((a, b) => {
+    const normA = (a.date && a.date.length === 7) ? `${a.date}-01` : (a.date || '');
+    const normB = (b.date && b.date.length === 7) ? `${b.date}-01` : (b.date || '');
+    return normA.localeCompare(normB);
+  });
+  
+  const targetDateNorm = (date && date.length === 7) ? `${date}-01` : (date || '');
+  
+  let activeCompany = defVal;
+  let hasSet = false;
+  for (let i = 0; i < sorted.length; i++) {
+    const eventDateNorm = (sorted[i].date && sorted[i].date.length === 7) ? `${sorted[i].date}-01` : (sorted[i].date || '');
+    if (eventDateNorm <= targetDateNorm) {
+      activeCompany = sorted[i].company || '';
+      hasSet = true;
+    }
+  }
+  return hasSet ? activeCompany : (sorted[0]?.company || defVal);
+}
+
+/**
+ * Expands RSU grants into visual grant events and tranche vesting events.
+ */
+export function getExpandedCompEvents(compEvents, salaryEvents, cutoffDate = '') {
+  if (!compEvents) return [];
+  const list = [];
+  compEvents.forEach(evt => {
+    if (evt.type === 'rsu') {
+      const evtCompany = evt.company || 'Self-Employed';
+      
+      // 2. Add each tranche as a virtual 'vest' style event at the tranche date
+      const tranches = parseRsuTranches(evt);
+      tranches.forEach(tranche => {
+        const activeCompany = getActiveCompanyAt(tranche.date, salaryEvents, evtCompany);
+        const isLegacyOrBlank = !evt.company || evt.company.trim() === '' || evt.company.trim().toLowerCase() === 'self-employed' || evt.company.trim().toLowerCase() === 'freelance';
+        const isMatching = isLegacyOrBlank || (activeCompany || '').trim().toLowerCase() === (evtCompany || '').trim().toLowerCase();
+        const isFuture = cutoffDate ? (tranche.date >= cutoffDate) : false;
+        
+        let type = 'vest';
+        let title = `${evt.title || 'RSU'} (Vest)`;
+        let status = 'realized';
+        
+        if (!isMatching) {
+          status = 'forfeited';
+          type = 'rsu_forfeited';
+          title = `${evt.title || 'RSU'} (Forfeited - Left ${evtCompany})`;
+        } else if (isFuture) {
+          status = 'projected';
+          title = `${evt.title || 'RSU'} (Projected Vest)`;
+        }
+        
+        list.push({
+          ...evt,
+          id: `rsu-tranche-${evt.id}-${tranche.id}`,
+          date: tranche.date,
+          amount: tranche.amount,
+          type,
+          title,
+          status,
+          isRsuTranche: true,
+          rsuParentId: evt.id
+        });
+      });
+    } else {
+      const isFuture = cutoffDate ? (evt.date && evt.date >= cutoffDate) : false;
+      list.push({
+        ...evt,
+        status: isFuture ? 'projected' : 'realized'
+      });
+    }
+  });
+  return list;
+}
+
+/**
+ * Safely parses the text location from an RSU event's serialized location field.
+ */
+export function getRsuLocation(event) {
+  if (!event) return '';
+  try {
+    if (event.location && typeof event.location === 'string' && (event.location.startsWith('{') || event.location.startsWith('['))) {
+      const parsed = JSON.parse(event.location);
+      if (parsed && typeof parsed === 'object' && 'location' in parsed) {
+        return parsed.location || '';
+      }
+    }
+  } catch (err) {
+    // ignore
+  }
+  return event.location || '';
+}
+

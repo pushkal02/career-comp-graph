@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Download, FileSpreadsheet, Sparkles, Image } from 'lucide-react';
-import { convertCurrency, convertToPPP, COUNTRIES } from '../utils/currency';
+import { Download, FileSpreadsheet, Sparkles, Image, X } from 'lucide-react';
+import { convertCurrency, convertToPPP, COUNTRIES, getExpandedCompEvents, getRsuLocation } from '../utils/currency';
 
 export default function CompChart({ 
   salaryEvents, 
@@ -18,6 +18,7 @@ export default function CompChart({
   const [hoveredItem, setHoveredItem] = useState(null); // { x, y, title, value, date, type, category }
 
   const [chartMode, setChartMode] = useState('rate'); // 'rate' or 'cumulative'
+  const [futureViewDate, setFutureViewDate] = useState('');
 
   // Graph filters state
   const [filters, setFilters] = useState({
@@ -29,6 +30,7 @@ export default function CompChart({
     bonus: true,
     grant: true,
     vest: true,
+    unvestedRsu: false, // OFF by default
     cumulativeLine: true,
     avgMonthlySalary: true,
     avgAnnualSalary: true
@@ -84,11 +86,31 @@ export default function CompChart({
     return normA.localeCompare(normB);
   });
 
-  // Graph ends exactly on the last day of the current year (December 31st of currentYear)
   const today = new Date();
   const currentYear = today.getFullYear();
-  const endYear = Math.max(currentYear, startYear);
-  const totalMonths = (endYear - startYear) * 12 + (12 - startMonth);
+  const currentMonth = today.getMonth() + 1;
+  const cutoffDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+
+  // Expand RSU events into visual grants and tranches (realized/projected/forfeited)
+  const expandedCompEvents = getExpandedCompEvents(compEvents, sortedSalaryEvents, cutoffDate);
+
+  let endYear = Math.max(currentYear, startYear);
+  let endMonth = 12;
+
+
+
+  // Manual future view overrides auto-extension
+  if (futureViewDate && futureViewDate.length >= 7) {
+    const parts = futureViewDate.split('-');
+    const fy = parseInt(parts[0]);
+    const fm = parseInt(parts[1]) || 12;
+    if (!isNaN(fy) && !isNaN(fm)) {
+      endYear = fy;
+      endMonth = fm;
+    }
+  }
+
+  const totalMonths = (endYear - startYear) * 12 + (endMonth - startMonth);
 
   const convertValue = (amount, eventCurrency, countryCode) => {
     if (pppMode) {
@@ -145,8 +167,13 @@ export default function CompChart({
     }
     
     const targetLimit = `${dateStr}-31`;
-    const compEarned = compEvents
-      .filter(e => (e.type === 'bonus' || e.type === 'vest') && e.date <= targetLimit)
+    const compEarned = expandedCompEvents
+      .filter(evt => {
+        if (evt.status === 'projected') {
+          return evt.date <= targetLimit;
+        }
+        return (evt.type === 'bonus' || evt.type === 'vest') && evt.date <= targetLimit;
+      })
       .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
       
     const totalEarned = baseEarned + compEarned;
@@ -185,9 +212,6 @@ export default function CompChart({
     cumulativePoints[m].avgAnnualRolling = totalInWindow;
   }
 
-  const currentMonth = today.getMonth() + 1;
-  const cutoffDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
-
   // Maximum and Minimum salary for Y scale
   const salaries = salaryEvents.map(e => convertValue(e.salary, e.currency, e.country));
   const maxSalary = salaries.length > 0 ? Math.max(...salaries) : 100000;
@@ -209,7 +233,7 @@ export default function CompChart({
   const currentMaxY = chartMode === 'cumulative' ? maxYCumulative : maxY;
 
   // Maximum compensation event amount for circle sizing
-  const compAmounts = compEvents.map(e => convertValue(e.amount, e.currency, e.country));
+  const compAmounts = expandedCompEvents.map(e => convertValue(e.amount, e.currency, e.country));
   const maxCompAmount = compAmounts.length > 0 ? Math.max(...compAmounts) : 10000;
 
   // Export functions
@@ -772,6 +796,35 @@ export default function CompChart({
               Cumulative Earnings
             </button>
           </div>
+ 
+          {/* Future View Dropdown */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginRight: '0.5rem', background: 'var(--bg-secondary)', padding: '4px 8px', borderRadius: '8px', border: '1px solid var(--border-color)' }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Future View:</span>
+            <select
+              value={futureViewDate}
+              onChange={(e) => setFutureViewDate(e.target.value)}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-primary)',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                outline: 'none',
+                padding: '2px',
+                cursor: 'pointer'
+              }}
+            >
+              <option value="" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>None</option>
+              {Array.from({ length: 10 }, (_, i) => {
+                const year = currentYear + i + 1;
+                return (
+                  <option key={year} value={`${year}-12`} style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+                    {year} ({i + 1} Yr Out)
+                  </option>
+                );
+              })}
+            </select>
+          </div>
 
           {/* Action buttons */}
           <button
@@ -853,6 +906,7 @@ export default function CompChart({
           else if (filter.key === 'bonus') rgbString = '16, 185, 129';
           else if (filter.key === 'grant') rgbString = '245, 158, 11';
           else if (filter.key === 'vest') rgbString = '168, 85, 247';
+          else if (filter.key === 'unvestedRsu') rgbString = '168, 85, 247';
           else if (filter.key === 'cumulativeLine') rgbString = '168, 85, 247';
           else if (filter.key === 'avgMonthlySalary') rgbString = '14, 165, 233';
           else if (filter.key === 'avgAnnualSalary') rgbString = '99, 102, 241';
@@ -876,7 +930,9 @@ export default function CompChart({
                 transition: 'all 0.15s ease',
                 fontWeight: 600
               }}
-              onClick={() => setFilters(prev => ({ ...prev, [filter.key]: !prev[filter.key] }))}
+              onClick={() => {
+                setFilters(prev => ({ ...prev, [filter.key]: !prev[filter.key] }));
+              }}
             >
               <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: filter.color, display: 'inline-block' }}></span>
               {filter.label}
@@ -1098,7 +1154,15 @@ export default function CompChart({
 
                 {/* Financial Overlay Circles (Bonus, Grant, Vest) */}
                 {(() => {
-                  const filteredCompEvents = compEvents.filter(evt => filters[evt.type]);
+                  const endLimitDate = `${endYear}-${String(endMonth).padStart(2, '0')}-31`;
+                  const filteredCompEvents = expandedCompEvents.filter(evt => {
+                    if (evt.date > endLimitDate) return false;
+                    if (evt.status === 'projected') {
+                      return true;
+                    }
+                    if (evt.type === 'rsu_forfeited') return filters.vest;
+                    return filters[evt.type];
+                  });
                   const compGroupsByDate = {};
                   filteredCompEvents.forEach((evt) => {
                     const normalizedDate = normalizeDate(evt.date);
@@ -1143,12 +1207,17 @@ export default function CompChart({
                         {groupWithRadii.map(({ evt, radius }, idx) => {
                           let fillColor = 'rgba(16, 185, 129, 0.22)';
                           let strokeColor = 'var(--color-bonus)';
+                          const isDashed = evt.status === 'projected' || evt.type === 'rsu_forfeited';
+
                           if (evt.type === 'grant') {
                             fillColor = 'rgba(245, 158, 11, 0.22)';
                             strokeColor = 'var(--color-grant)';
                           } else if (evt.type === 'vest') {
                             fillColor = 'rgba(168, 85, 247, 0.22)';
                             strokeColor = 'var(--color-vest)';
+                          } else if (evt.type === 'rsu_forfeited') {
+                            fillColor = 'rgba(148, 163, 184, 0.08)';
+                            strokeColor = '#94a3b8';
                           }
      
                           const isInnermost = idx === groupWithRadii.length - 1;
@@ -1158,7 +1227,7 @@ export default function CompChart({
                               <g
                                 key={`comp-evt-${evt.id}`}
                                 className="chart-comp-node"
-                                style={{ '--node-color': strokeColor }}
+                                style={{ '--node-color': strokeColor, opacity: evt.status === 'projected' ? 0.35 : 1 }}
                                 transform={`translate(${x}, ${y})`}
                                 onMouseEnter={() => {
                                   setHoveredItem({
@@ -1170,7 +1239,7 @@ export default function CompChart({
                                     type: evt.type,
                                     company: evt.company || 'Self-Employed',
                                     country: evt.country,
-                                    location: evt.location,
+                                    location: getRsuLocation(evt),
                                     category: 'comp'
                                   });
                                 }}
@@ -1181,6 +1250,7 @@ export default function CompChart({
                                   fill={fillColor}
                                   stroke={strokeColor}
                                   strokeWidth="2"
+                                  strokeDasharray={isDashed ? "3,3" : undefined}
                                   style={{ filter: 'drop-shadow(0 4px 6px rgba(0,0,0,0.4))' }}
                                 />
                                 <circle
@@ -1217,7 +1287,7 @@ export default function CompChart({
                               <g
                                 key={`comp-evt-${evt.id}`}
                                 className="chart-comp-node"
-                                style={{ '--node-color': strokeColor }}
+                                style={{ '--node-color': strokeColor, opacity: evt.status === 'projected' ? 0.35 : 1 }}
                                 transform={`translate(${x}, ${y})`}
                                 onMouseEnter={() => {
                                   setHoveredItem({
@@ -1229,7 +1299,7 @@ export default function CompChart({
                                     type: evt.type,
                                     company: evt.company || 'Self-Employed',
                                     country: evt.country,
-                                    location: evt.location,
+                                    location: getRsuLocation(evt),
                                     category: 'comp'
                                   });
                                 }}
@@ -1247,6 +1317,7 @@ export default function CompChart({
                                   fill="none"
                                   stroke={strokeColor}
                                   strokeWidth="1.5"
+                                  strokeDasharray={isDashed ? "3,3" : undefined}
                                 />
                                 <text
                                   className="chart-comp-label"
@@ -1303,7 +1374,14 @@ export default function CompChart({
 
                 {/* Discrete Compensation events as points */}
                 {(() => {
-                  const cumulativeCompEvents = compEvents.filter(evt => (evt.type === 'bonus' || evt.type === 'vest') && filters[evt.type]);
+                  const endLimitDate = `${endYear}-${String(endMonth).padStart(2, '0')}-31`;
+                  const cumulativeCompEvents = expandedCompEvents.filter(evt => {
+                    if (evt.date > endLimitDate) return false;
+                    if (evt.status === 'projected') {
+                      return true;
+                    }
+                    return (evt.type === 'bonus' || evt.type === 'vest') && filters[evt.type];
+                  });
                   return cumulativeCompEvents.map((evt) => {
                     const normDate = normalizeDate(evt.date);
                     const datePrefix = normDate.slice(0, 7); // YYYY-MM
@@ -1320,7 +1398,7 @@ export default function CompChart({
                       <g
                         key={`cum-comp-evt-${evt.id}`}
                         className="chart-comp-node"
-                        style={{ '--node-color': color }}
+                        style={{ '--node-color': color, opacity: evt.status === 'projected' ? 0.35 : 1 }}
                         transform={`translate(${x}, ${y})`}
                         onMouseEnter={() => {
                           setHoveredItem({
@@ -1332,7 +1410,7 @@ export default function CompChart({
                             type: evt.type,
                             company: evt.company || 'Self-Employed',
                             country: evt.country,
-                            location: evt.location,
+                            location: getRsuLocation(evt),
                             category: 'comp'
                           });
                         }}
@@ -1383,8 +1461,8 @@ export default function CompChart({
             }}
           >
             <div className="tooltip-title">
-              <span className={`tooltip-badge ${hoveredItem.type}`}>
-                {hoveredItem.type}
+              <span className={`tooltip-badge ${hoveredItem.type}`} style={{ textTransform: 'capitalize' }}>
+                {hoveredItem.type === 'rsu_forfeited' ? 'Forfeited' : (hoveredItem.type === 'jobswitch' ? 'Job Switch' : hoveredItem.type)}
               </span>
               <span style={{ fontSize: '0.8rem', fontWeight: 600, wordBreak: 'break-word', display: 'inline-block', maxWidth: '220px' }}>
                 {hoveredItem.title}
@@ -1455,6 +1533,7 @@ export default function CompChart({
           pppMode={pppMode}
           exchangeRates={exchangeRates}
           pppFactors={pppFactors}
+          endYear={endYear}
         />
       )}
     </div>
@@ -1488,6 +1567,8 @@ function CompanyEarningsList({
   const currentYear = today.getFullYear();
   const currentMonth = today.getMonth() + 1;
   const cutoffDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+
+  const expandedCompEvents = getExpandedCompEvents(compEvents, sortedSalaryEvents, cutoffDate);
 
   const convertValue = (amount, eventCurrency, countryCode) => {
     if (pppMode) {
@@ -1550,7 +1631,7 @@ function CompanyEarningsList({
     }
 
     // 2. Add comp events
-    compEvents.forEach(evt => {
+    expandedCompEvents.forEach(evt => {
       if (normalizeDate(evt.date) >= normCutoff) return;
 
       const companyName = evt.company || 'Self-Employed';
@@ -1785,6 +1866,7 @@ function CompanyEarningsList({
                       <span>Vested: <strong>{formatFullCurrency(company.vest)}</strong> ({vestPct.toFixed(0)}%)</span>
                     </div>
                   )}
+
                 </div>
               </div>
             );
@@ -1805,7 +1887,8 @@ function PeriodicEarningsList({
   formatShortCurrency,
   pppMode,
   exchangeRates,
-  pppFactors 
+  pppFactors,
+  endYear 
 }) {
   const [periodType, setPeriodType] = useState('year'); // 'year', 'half', 'quarter'
   const [viewMode, setViewMode] = useState('chart'); // 'chart' or 'list'
@@ -1850,7 +1933,11 @@ function PeriodicEarningsList({
     return normA.localeCompare(normB);
   });
 
-  const maxYear = currentYear;
+  const currentMonth = today.getMonth() + 1;
+  const cutoffDate = `${currentYear}-${String(currentMonth).padStart(2, '0')}`;
+  const expandedCompEvents = getExpandedCompEvents(compEvents, sortedSalaryEvents, cutoffDate);
+
+  const maxYear = endYear || currentYear;
 
   const years = [];
   for (let y = startYearNum; y <= maxYear; y++) {
@@ -1939,14 +2026,14 @@ function PeriodicEarningsList({
       }
     }
 
-    const bonusEarned = compEvents
+    const bonusEarned = expandedCompEvents
       .filter(e => {
         const normDate = normalizeDate(e.date);
         return e.type === 'bonus' && normDate >= p.start && normDate < p.end;
       })
       .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
-    const vestEarned = compEvents
+    const vestEarned = expandedCompEvents
       .filter(e => {
         const normDate = normalizeDate(e.date);
         return e.type === 'vest' && normDate >= p.start && normDate < p.end;

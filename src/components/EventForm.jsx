@@ -1,6 +1,55 @@
 import { useState } from 'react';
 import { PlusCircle, Trash2, Shield, TrendingUp, Calendar, Tag, Briefcase, Edit3, X, Check, MapPin } from 'lucide-react';
-import { COUNTRIES, getCountryByCurrency } from '../utils/currency';
+import { COUNTRIES, getCountryByCurrency, parseRsuTranches, getRsuLocation } from '../utils/currency';
+
+const generateTranches = (templateType, totalAmt, startYearVal, startMonthVal) => {
+  const amount = parseFloat(totalAmt) || 0;
+  const tranches = [];
+  let numVests = 0;
+  let intervalMonths = 3;
+  
+  if (templateType === '4y_q') {
+    numVests = 16;
+    intervalMonths = 3;
+  } else if (templateType === '3y_q') {
+    numVests = 12;
+    intervalMonths = 3;
+  } else if (templateType === '1y_q') {
+    numVests = 4;
+    intervalMonths = 3;
+  } else if (templateType === '4y_m') {
+    numVests = 48;
+    intervalMonths = 1;
+  } else if (templateType === '1y_y') {
+    numVests = 1;
+    intervalMonths = 12;
+  } else {
+    return [];
+  }
+  
+  const baseAmount = Math.floor((amount / numVests) * 100) / 100;
+  const remainder = Math.round((amount - baseAmount * numVests) * 100) / 100;
+  
+  let currentY = parseInt(startYearVal);
+  let currentM = parseInt(startMonthVal);
+  
+  for (let i = 0; i < numVests; i++) {
+    currentM += intervalMonths;
+    while (currentM > 12) {
+      currentM -= 12;
+      currentY += 1;
+    }
+    
+    const trancheAmt = (i === numVests - 1) ? (baseAmount + remainder) : baseAmount;
+    
+    tranches.push({
+      id: `t_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 5)}`,
+      date: `${currentY}-${String(currentM).padStart(2, '0')}`,
+      amount: trancheAmt
+    });
+  }
+  return tranches;
+};
 
 export default function EventForm({ 
   salaryEvents, 
@@ -99,6 +148,20 @@ export default function EventForm({
   const [editLocation, setEditLocation] = useState('');
   const [editNetVal, setEditNetVal] = useState('');
 
+  // RSU form state
+  const [rsuYear, setRsuYear] = useState(() => (startDate || '2024-01').split('-')[0]);
+  const [rsuMonth, setRsuMonth] = useState(() => (startDate || '2024-01').split('-')[1]);
+  const [rsuDay, setRsuDay] = useState('');
+  const [rsuAmount, setRsuAmount] = useState('100000');
+  const [rsuCurrency, setRsuCurrency] = useState(currency || 'USD');
+  const [rsuCountry, setRsuCountry] = useState(() => getCountryByCurrency(currency || 'USD'));
+  const [rsuTitle, setRsuTitle] = useState('');
+  const [rsuWorkType, setRsuWorkType] = useState('Company');
+  const [rsuCompany, setRsuCompany] = useState('');
+  const [rsuLocation, setRsuLocation] = useState('');
+  const [rsuTranches, setRsuTranches] = useState([]);
+  const [editTranches, setEditTranches] = useState([]);
+
   // Sync date inputs when baseline changes (during render)
   const [prevStartDate, setPrevStartDate] = useState(startDate);
   if (startDate !== prevStartDate) {
@@ -110,6 +173,8 @@ export default function EventForm({
     setCompYear(y);
     setCompMonth(m);
     setCompDay('');
+    setRsuYear(y);
+    setRsuMonth(m);
   }
 
   // Sync default currency changes
@@ -120,6 +185,8 @@ export default function EventForm({
     setSalaryCountry(getCountryByCurrency(currency || 'USD'));
     setCompCurrency(currency || 'USD');
     setCompCountry(getCountryByCurrency(currency || 'USD'));
+    setRsuCurrency(currency || 'USD');
+    setRsuCountry(getCountryByCurrency(currency || 'USD'));
     if (editingEvent && !editingEvent.currency) {
       setEditCurrency(currency || 'USD');
       setEditCountry(getCountryByCurrency(currency || 'USD'));
@@ -128,17 +195,18 @@ export default function EventForm({
 
   const handleSalaryCurrencyChange = (curr) => {
     setSalaryCurrency(curr);
-    setSalaryCountry(getCountryByCurrency(curr));
   };
 
   const handleCompCurrencyChange = (curr) => {
     setCompCurrency(curr);
-    setCompCountry(getCountryByCurrency(curr));
+  };
+
+  const handleRsuCurrencyChange = (curr) => {
+    setRsuCurrency(curr);
   };
 
   const handleEditCurrencyChange = (curr) => {
     setEditCurrency(curr);
-    setEditCountry(getCountryByCurrency(curr));
   };
 
   const handleSalarySubmit = (e) => {
@@ -185,6 +253,44 @@ export default function EventForm({
     setCompLocation('');
   };
 
+  const handleRsuSubmit = (e) => {
+    e.preventDefault();
+    if (!rsuYear || !rsuMonth || !rsuAmount || Number(rsuAmount) === 0) return;
+
+    const trancheSum = rsuTranches.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+    if (Math.abs(trancheSum - Number(rsuAmount)) > 0.01) {
+      alert(`Vesting tranches total (${trancheSum}) does not match the total grant amount (${rsuAmount}). Please align them.`);
+      return;
+    }
+
+    const serializedLocation = JSON.stringify({
+      location: rsuLocation.trim(),
+      tranches: rsuTranches.map(t => ({
+        id: t.id || `t_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+        date: t.date,
+        amount: Number(t.amount)
+      }))
+    });
+
+    onAddCompEvent({
+      date: getCombinedDate(rsuYear, rsuMonth, rsuDay),
+      amount: Number(rsuAmount),
+      type: 'rsu',
+      currency: rsuCurrency,
+      title: rsuTitle.trim() || 'RSU Stock Grant',
+      company: rsuWorkType === 'Company' ? rsuCompany.trim() || 'Self-Employed' : rsuWorkType,
+      location: serializedLocation,
+      country: rsuCountry
+    });
+
+    // Reset inputs
+    setRsuTitle('');
+    setRsuCompany('');
+    setRsuLocation('');
+    setRsuTranches([]);
+    setRsuDay('');
+  };
+
   const startEdit = (item) => {
     setEditingEvent(item);
     const parsed = parseCombinedDate(item.date);
@@ -198,8 +304,14 @@ export default function EventForm({
     setEditCurrency(item.currency || currency || 'USD');
     setEditCountry(item.country || getCountryByCurrency(item.currency || currency || 'USD'));
     setEditTitle(item.title || '');
-    setEditLocation(item.location || '');
+    setEditLocation(item.type === 'rsu' ? getRsuLocation(item) : (item.location || ''));
     setEditNetVal(item.monthlyNetSalary ? item.monthlyNetSalary.toString() : '');
+    
+    if (item.type === 'rsu') {
+      setEditTranches(parseRsuTranches(item));
+    } else {
+      setEditTranches([]);
+    }
 
     const itemCompany = item.company || 'Self-Employed';
     if (['Freelance', 'Self-Employed'].includes(itemCompany)) {
@@ -234,6 +346,23 @@ export default function EventForm({
         monthlyNetSalary: editNetVal ? Number(editNetVal) : undefined
       });
     } else {
+      let finalLocation = editLocation.trim() || undefined;
+      if (editType === 'rsu') {
+        const trancheSum = editTranches.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+        if (Math.abs(trancheSum - Number(editVal)) > 0.01) {
+          alert(`Vesting tranches total (${trancheSum}) does not match the total grant amount (${editVal}). Please align them.`);
+          return;
+        }
+        finalLocation = JSON.stringify({
+          location: editLocation.trim(),
+          tranches: editTranches.map(t => ({
+            id: t.id || `t_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+            date: t.date,
+            amount: Number(t.amount)
+          }))
+        });
+      }
+
       onEditCompEvent({
         id: editingEvent.id,
         date: finalDate,
@@ -242,7 +371,7 @@ export default function EventForm({
         currency: editCurrency,
         title: editTitle.trim() || getDefaultCompTitle(editType),
         company: finalCompany,
-        location: editLocation.trim() || undefined,
+        location: finalLocation,
         country: editCountry
       });
     }
@@ -250,6 +379,7 @@ export default function EventForm({
     setEditingEvent(null);
     setEditLocation('');
     setEditNetVal('');
+    setEditTranches([]);
     setActiveTab('manage');
   };
 
@@ -386,9 +516,23 @@ export default function EventForm({
             >
               <Shield size={14} /> Bonus / Stock
             </button>
+            <button
+              className="btn"
+              style={{
+                background: formType === 'rsu' ? 'rgba(99, 102, 241, 0.2)' : 'transparent',
+                border: formType === 'rsu' ? '1px solid var(--color-primary)' : '1px solid transparent',
+                color: formType === 'rsu' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                fontSize: '0.85rem',
+                padding: '0.4rem',
+                flex: 1
+              }}
+              onClick={() => setFormType('rsu')}
+            >
+              <Shield size={14} /> RSU Grant
+            </button>
           </div>
 
-          {formType === 'salary' ? (
+          {formType === 'salary' && (
             <form onSubmit={handleSalarySubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="form-group">
                 <label><Calendar size={12} style={{ marginRight: 4 }} /> Date (Year / Month / Optional Day)</label>
@@ -569,7 +713,9 @@ export default function EventForm({
                 <PlusCircle size={18} /> Update Salary Remuneration
               </button>
             </form>
-          ) : (
+          )}
+
+          {formType === 'comp' && (
             <form onSubmit={handleCompSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <div className="form-group">
                 <label><Calendar size={12} style={{ marginRight: 4 }} /> Date (Year / Month / Optional Day)</label>
@@ -729,6 +875,250 @@ export default function EventForm({
               </button>
             </form>
           )}
+
+          {formType === 'rsu' && (
+            <form onSubmit={handleRsuSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="form-group">
+                <label><Calendar size={12} style={{ marginRight: 4 }} /> Grant Date (Year / Month / Optional Day)</label>
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <select 
+                    value={rsuYear} 
+                    onChange={(e) => setRsuYear(e.target.value)}
+                    style={{ flex: 2 }}
+                  >
+                    {yearsOptions.map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  <select 
+                    value={rsuMonth} 
+                    onChange={(e) => setRsuMonth(e.target.value)}
+                    style={{ flex: 2 }}
+                  >
+                    {monthsOptions.map(m => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                  <select 
+                    value={rsuDay} 
+                    onChange={(e) => setRsuDay(e.target.value)}
+                    style={{ flex: 1.5 }}
+                  >
+                    <option value="">No Day</option>
+                    {daysOptions.map(d => (
+                      <option key={d} value={d}>{Number(d)}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group" style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ flex: 1 }}>
+                  <label>Total Grant Value ({getCurrencySymbol(rsuCurrency).trim()})</label>
+                  <input 
+                    type="number" 
+                    step="any"
+                    value={rsuAmount}
+                    onChange={(e) => setRsuAmount(e.target.value)}
+                    required
+                  />
+                </div>
+                <div style={{ width: '95px' }}>
+                  <label>Currency</label>
+                  <select value={rsuCurrency} onChange={(e) => handleRsuCurrencyChange(e.target.value)} style={{ height: '37px' }}>
+                    <option value="USD">USD ($)</option>
+                    <option value="INR">INR (₹)</option>
+                    <option value="GBP">GBP (£)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="JPY">JPY (¥)</option>
+                    <option value="CAD">CAD (CA$)</option>
+                    <option value="AUD">AUD (A$)</option>
+                    <option value="SGD">SGD (SG$)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Country (For PPP conversion)</label>
+                <select 
+                  value={rsuCountry} 
+                  onChange={(e) => {
+                    const selectedCountry = e.target.value;
+                    setRsuCountry(selectedCountry);
+                    const found = COUNTRIES.find(c => c.code === selectedCountry);
+                    if (found) {
+                      setRsuCurrency(found.defaultCurrency);
+                    }
+                  }}
+                  required
+                >
+                  {COUNTRIES.map(c => (
+                    <option key={c.code} value={c.code}>
+                      {c.flag} {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label><Briefcase size={12} style={{ marginRight: 4 }} /> Company / Work Context</label>
+                <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.25rem' }}>
+                  {['Company', 'Freelance', 'Self-Employed'].map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      className="btn"
+                      style={{
+                        flex: 1,
+                        padding: '0.35rem 0.5rem',
+                        fontSize: '0.78rem',
+                        background: rsuWorkType === type ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                        border: rsuWorkType === type ? '1px solid var(--color-primary)' : '1px solid var(--border-color)',
+                        color: rsuWorkType === type ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      }}
+                      onClick={() => {
+                        setRsuWorkType(type);
+                        if (type !== 'Company') setRsuCompany(type);
+                        else setRsuCompany('');
+                      }}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+                {rsuWorkType === 'Company' && (
+                  <input
+                    type="text"
+                    placeholder="Enter Company Name (e.g. Google)"
+                    value={rsuCompany}
+                    onChange={(e) => setRsuCompany(e.target.value)}
+                    required={rsuWorkType === 'Company'}
+                  />
+                )}
+              </div>
+
+              <div className="form-group">
+                <label><Briefcase size={12} style={{ marginRight: 4 }} /> Grant Title / Description</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Google Initial L4 RSU Grant"
+                  value={rsuTitle}
+                  onChange={(e) => setRsuTitle(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label><MapPin size={12} style={{ marginRight: 4 }} /> Location (Optional)</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Mountain View, CA"
+                  value={rsuLocation}
+                  onChange={(e) => setRsuLocation(e.target.value)}
+                />
+              </div>
+
+              {/* Tranche vesting scheduler */}
+              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', padding: '0.75rem', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: 0 }}>
+                  <span>Vesting Schedule / Tranches</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    Total: {formatCurrency(rsuAmount, rsuCurrency)}
+                  </span>
+                </h4>
+                
+                <div className="form-group">
+                  <label style={{ fontSize: '0.75rem' }}>Auto-Generate Schedule</label>
+                  <select 
+                    defaultValue="" 
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        const generated = generateTranches(e.target.value, rsuAmount, rsuYear, rsuMonth);
+                        setRsuTranches(generated);
+                        e.target.value = '';
+                      }
+                    }}
+                    style={{ fontSize: '0.8rem', height: '32px' }}
+                  >
+                    <option value="">-- Choose a template to auto-populate --</option>
+                    <option value="1y_y">1 Year - 1 Annual Vest</option>
+                    <option value="1y_q">1 Year - 4 Quarterly Vests</option>
+                    <option value="3y_q">3 Years - 12 Quarterly Vests</option>
+                    <option value="4y_q">4 Years - 16 Quarterly Vests</option>
+                    <option value="4y_m">4 Years - 48 Monthly Vests</option>
+                  </select>
+                </div>
+
+                <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.4rem', paddingRight: '4px' }}>
+                  {rsuTranches.map((t, idx) => (
+                    <div key={t.id || idx} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', width: '45px', color: 'var(--text-secondary)' }}>#{idx + 1}</span>
+                      <input 
+                        type="month" 
+                        value={t.date} 
+                        onChange={(e) => {
+                          const updated = [...rsuTranches];
+                          updated[idx].date = e.target.value;
+                          setRsuTranches(updated);
+                        }}
+                        style={{ flex: 2, padding: '0.25rem', height: '30px', fontSize: '0.8rem' }}
+                        required
+                      />
+                      <input 
+                        type="number" 
+                        value={t.amount} 
+                        placeholder="Amount"
+                        onChange={(e) => {
+                          const updated = [...rsuTranches];
+                          updated[idx].amount = e.target.value;
+                          setRsuTranches(updated);
+                        }}
+                        style={{ flex: 1.5, padding: '0.25rem', height: '30px', fontSize: '0.8rem' }}
+                        required
+                      />
+                      <button 
+                        type="button" 
+                        className="btn" 
+                        onClick={() => setRsuTranches(rsuTranches.filter((_, i) => i !== idx))}
+                        style={{ padding: '0.25rem', height: '30px', width: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Trash2 size={12} style={{ color: 'var(--color-hike)' }} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <button 
+                  type="button" 
+                  className="btn" 
+                  onClick={() => setRsuTranches([...rsuTranches, { id: `t_${Date.now()}_${Math.random()}`, date: `${rsuYear}-${rsuMonth}`, amount: '' }])}
+                  style={{ alignSelf: 'flex-start', padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
+                >
+                  + Add Tranche Row
+                </button>
+
+                {(() => {
+                  const trancheSum = rsuTranches.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+                  const remaining = Number(rsuAmount) - trancheSum;
+                  const isPerfect = Math.abs(remaining) <= 0.01;
+                  return (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', background: isPerfect ? 'rgba(16,185,129,0.06)' : 'rgba(239,68,68,0.06)', border: isPerfect ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(239,68,68,0.2)', padding: '0.4rem', borderRadius: '4px', marginTop: '0.25rem' }}>
+                      <span style={{ color: isPerfect ? '#10b981' : '#f87171' }}>
+                        Allocated: {formatCurrency(trancheSum, rsuCurrency)}
+                      </span>
+                      <span style={{ color: isPerfect ? '#10b981' : '#f87171', fontWeight: 600 }}>
+                        {isPerfect ? '✓ Fully Allocated' : `Remaining: ${formatCurrency(remaining, rsuCurrency)}`}
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <button type="submit" className="btn btn-primary" style={{ marginTop: '0.5rem' }}>
+                <PlusCircle size={18} /> Record RSU Grant
+              </button>
+            </form>
+          )}
         </div>
       )}
 
@@ -790,6 +1180,7 @@ export default function EventForm({
                   <option value="bonus">Cash Bonus</option>
                   <option value="grant">Grant (Patent, Stock, etc.)</option>
                   <option value="vest">Vested Stock (RSUs / Options)</option>
+                  <option value="rsu">RSU Stock Grant</option>
                 </select>
               </div>
             )}
@@ -928,6 +1319,103 @@ export default function EventForm({
               />
             </div>
 
+            {editType === 'rsu' && (
+              <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', padding: '0.75rem', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '0.5rem' }}>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: 600, display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: 0 }}>
+                  <span>Vesting Schedule / Tranches</span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                    Total: {formatCurrency(editVal, editCurrency)}
+                  </span>
+                </h4>
+                
+                <div className="form-group">
+                  <label style={{ fontSize: '0.75rem' }}>Auto-Generate Schedule</label>
+                  <select 
+                    defaultValue="" 
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        const generated = generateTranches(e.target.value, editVal, editYear, editMonth);
+                        setEditTranches(generated);
+                        e.target.value = '';
+                      }
+                    }}
+                    style={{ fontSize: '0.8rem', height: '32px' }}
+                  >
+                    <option value="">-- Choose a template to auto-populate --</option>
+                    <option value="1y_y">1 Year - 1 Annual Vest</option>
+                    <option value="1y_q">1 Year - 4 Quarterly Vests</option>
+                    <option value="3y_q">3 Years - 12 Quarterly Vests</option>
+                    <option value="4y_q">4 Years - 16 Quarterly Vests</option>
+                    <option value="4y_m">4 Years - 48 Monthly Vests</option>
+                  </select>
+                </div>
+
+                <div style={{ maxHeight: '180px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.4rem', paddingRight: '4px' }}>
+                  {editTranches.map((t, idx) => (
+                    <div key={t.id || idx} style={{ display: 'flex', gap: '0.4rem', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.75rem', width: '45px', color: 'var(--text-secondary)' }}>#{idx + 1}</span>
+                      <input 
+                        type="month" 
+                        value={t.date} 
+                        onChange={(e) => {
+                          const updated = [...editTranches];
+                          updated[idx].date = e.target.value;
+                          setEditTranches(updated);
+                        }}
+                        style={{ flex: 2, padding: '0.25rem', height: '30px', fontSize: '0.8rem' }}
+                        required
+                      />
+                      <input 
+                        type="number" 
+                        value={t.amount} 
+                        placeholder="Amount"
+                        onChange={(e) => {
+                          const updated = [...editTranches];
+                          updated[idx].amount = e.target.value;
+                          setEditTranches(updated);
+                        }}
+                        style={{ flex: 1.5, padding: '0.25rem', height: '30px', fontSize: '0.8rem' }}
+                        required
+                      />
+                      <button 
+                        type="button" 
+                        className="btn" 
+                        onClick={() => setEditTranches(editTranches.filter((_, i) => i !== idx))}
+                        style={{ padding: '0.25rem', height: '30px', width: '30px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                      >
+                        <Trash2 size={12} style={{ color: 'var(--color-hike)' }} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+
+                <button 
+                  type="button" 
+                  className="btn" 
+                  onClick={() => setEditTranches([...editTranches, { id: `t_${Date.now()}_${Math.random()}`, date: `${editYear}-${editMonth}`, amount: '' }])}
+                  style={{ alignSelf: 'flex-start', padding: '0.3rem 0.6rem', fontSize: '0.75rem' }}
+                >
+                  + Add Tranche Row
+                </button>
+
+                {(() => {
+                  const trancheSum = editTranches.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+                  const remaining = Number(editVal) - trancheSum;
+                  const isPerfect = Math.abs(remaining) <= 0.01;
+                  return (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', background: isPerfect ? 'rgba(16,185,129,0.06)' : 'rgba(239,68,68,0.06)', border: isPerfect ? '1px solid rgba(16,185,129,0.2)' : '1px solid rgba(239,68,68,0.2)', padding: '0.4rem', borderRadius: '4px', marginTop: '0.25rem' }}>
+                      <span style={{ color: isPerfect ? '#10b981' : '#f87171' }}>
+                        Allocated: {formatCurrency(trancheSum, editCurrency)}
+                      </span>
+                      <span style={{ color: isPerfect ? '#10b981' : '#f87171', fontWeight: 600 }}>
+                        {isPerfect ? '✓ Fully Allocated' : `Remaining: ${formatCurrency(remaining, editCurrency)}`}
+                      </span>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
               <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
                 <Check size={16} /> Save Changes
@@ -950,7 +1438,7 @@ export default function EventForm({
           ) : (
             allEventsChronological.map((item) => {
               const isSalary = item.eventCategory === 'salary';
-              const label = isSalary ? item.type : item.type;
+              const label = isSalary ? item.type : (item.type === 'rsu' ? 'RSU Grant' : item.type);
               
               // Select class based on type
               let colorClass = 'hike';
@@ -959,8 +1447,10 @@ export default function EventForm({
               if (item.type === 'bonus') colorClass = 'bonus';
               if (item.type === 'grant') colorClass = 'grant';
               if (item.type === 'vest') colorClass = 'vest';
+              if (item.type === 'rsu') colorClass = 'vest'; // Reuse vest purple or define class
 
               const companyTag = item.company || 'Self-Employed';
+              const itemLoc = item.type === 'rsu' ? getRsuLocation(item) : item.location;
 
               return (
                 <div key={item.id} className="manager-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.6rem 0.75rem', borderBottom: '1px solid var(--border-color)', minWidth: 0 }}>
@@ -971,12 +1461,12 @@ export default function EventForm({
                         {item.title}
                       </span>
                     </div>
-                    <div className="manager-item-meta" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${formatDateLabel(item.date)} • ${isSalary ? 'Salary Remuneration' : 'Amount'}: ${formatCurrency(isSalary ? item.salary : item.amount, item.currency)}${isSalary ? '/yr' : ''}${isSalary ? ` (Gross: ${formatCurrency(item.salary / 12, item.currency)}/mo${item.monthlyNetSalary ? `, Net: ${formatCurrency(item.monthlyNetSalary, item.currency)}/mo` : ''})` : ''} • Employer: ${companyTag}${item.country ? ` • Country: ${item.country}` : ''}${item.location ? ` • Location: ${item.location}` : ''}`}>
+                    <div className="manager-item-meta" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${formatDateLabel(item.date)} • ${isSalary ? 'Salary Remuneration' : 'Amount'}: ${formatCurrency(isSalary ? item.salary : item.amount, item.currency)}${isSalary ? '/yr' : ''}${isSalary ? ` (Gross: ${formatCurrency(item.salary / 12, item.currency)}/mo${item.monthlyNetSalary ? `, Net: ${formatCurrency(item.monthlyNetSalary, item.currency)}/mo` : ''})` : ''} • Employer: ${companyTag}${item.country ? ` • Country: ${item.country}` : ''}${itemLoc ? ` • Location: ${itemLoc}` : ''}`}>
                       {formatDateLabel(item.date)} • <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatCurrency(isSalary ? item.salary : item.amount, item.currency)}</span>
                       {isSalary && ' / yr'} • <strong style={{ color: 'var(--color-primary)' }}>{companyTag}</strong>
                       {isSalary && ` (Gross: ${formatCurrency(item.salary / 12, item.currency)}/mo${item.monthlyNetSalary ? `, Net: ${formatCurrency(item.monthlyNetSalary, item.currency)}/mo` : ''})`}
                       {item.country && ` • ${COUNTRIES.find(c => c.code === item.country)?.flag || ''} ${item.country}`}
-                      {item.location && ` • 📍 ${item.location}`}
+                      {itemLoc && ` • 📍 ${itemLoc}`}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '0.25rem' }}>

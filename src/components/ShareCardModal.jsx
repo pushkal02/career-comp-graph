@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { X, Download, Eye, EyeOff, Sparkles, Layout } from 'lucide-react';
-import { convertCurrency, convertToPPP } from '../utils/currency';
+import { convertCurrency, convertToPPP, getExpandedCompEvents } from '../utils/currency';
 
 function drawRoundedRect(ctx, x, y, width, height, radius) {
   ctx.beginPath();
@@ -130,6 +130,9 @@ export default function ShareCardModal({
       const normCutoff = `${cutoffDate}-01`;
       const normBaseline = normalizeDate(baselineDate);
 
+      // Expand RSU events into visual grants and tranches (realized/projected/forfeited)
+      const expandedCompEvents = getExpandedCompEvents(compEvents, sortedSalaries, cutoffDate);
+
       // Setup last completed day (yesterday) for realized events
       const yesterday = new Date(today);
       yesterday.setDate(today.getDate() - 1);
@@ -152,13 +155,15 @@ export default function ShareCardModal({
         return dateStr <= yesterdayStr;
       };
 
+      // 2. Calculate realized cumulative base salary earned over time
       let cumulativeBaseEarned = 0;
       if (sortedSalaries.length > 0 && normBaseline < normCutoff) {
         for (let i = 0; i < sortedSalaries.length; i++) {
           const currentEvent = sortedSalaries[i];
           const nextEvent = sortedSalaries[i + 1];
           
-          let segmentStart = normalizeDate(currentEvent.date);
+          const normStart = normalizeDate(currentEvent.date);
+          let segmentStart = normStart;
           if (segmentStart < normBaseline) segmentStart = normBaseline;
           if (segmentStart > normCutoff) segmentStart = normCutoff;
           
@@ -174,11 +179,11 @@ export default function ShareCardModal({
         }
       }
 
-      const totalBonus = compEvents
+      const totalBonus = expandedCompEvents
         .filter(e => e.type === 'bonus' && isCompletedEvent(e.date))
         .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
-      const totalVest = compEvents
+      const totalVest = expandedCompEvents
         .filter(e => e.type === 'vest' && isCompletedEvent(e.date))
         .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
@@ -190,7 +195,7 @@ export default function ShareCardModal({
         totalVest: formatCurrencyVal(totalVest),
         totalRealized: formatCurrencyVal(totalRealized),
         growthPct,
-        milestonesCount: salaryEvents.length + compEvents.length,
+        milestonesCount: salaryEvents.length + expandedCompEvents.length,
         activeCurrency
       };
     };
@@ -409,8 +414,8 @@ export default function ShareCardModal({
       ctx.stroke();
 
       // Draw Payout Circles
-      const maxCompAmount = compEvents.length > 0 
-        ? Math.max(...compEvents.map(e => convertValue(e.amount, e.currency, e.country))) 
+      const maxCompAmount = expandedCompEvents.length > 0 
+        ? Math.max(...expandedCompEvents.map(e => convertValue(e.amount, e.currency, e.country))) 
         : 10000;
 
       const getCircleRadius = (amt) => {
@@ -420,7 +425,7 @@ export default function ShareCardModal({
         return Math.sqrt(minRadius * minRadius + (maxRadius * maxRadius - minRadius * minRadius) * (amt / maxCompAmount));
       };
 
-      compEvents.forEach(evt => {
+      expandedCompEvents.forEach(evt => {
         const cx = getCanvasX(evt.date);
         let activeSalary = sortedSalaries[0].salary;
         let activeCurrency = sortedSalaries[0].currency;
@@ -440,12 +445,23 @@ export default function ShareCardModal({
         let eventColor = '#10b981'; // bonus
         if (evt.type === 'grant') eventColor = '#f59e0b';
         if (evt.type === 'vest') eventColor = '#a855f7';
+        if (evt.type === 'rsu_forfeited') eventColor = '#94a3b8';
+
         ctx.fillStyle = `${eventColor}4D`;
         ctx.strokeStyle = eventColor;
         ctx.lineWidth = 1.5;
+        
+        const isDashed = evt.status === 'projected' || evt.type === 'rsu_forfeited';
+        if (isDashed) {
+          ctx.setLineDash([3, 3]);
+        } else {
+          ctx.setLineDash([]);
+        }
+
         ctx.fill();
         ctx.stroke();
       });
+      ctx.setLineDash([]);
     }
 
     // 6. Stats Grid at bottom

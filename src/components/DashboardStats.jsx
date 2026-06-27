@@ -1,5 +1,5 @@
 import { DollarSign, Award, Percent, Layers, ShieldCheck } from 'lucide-react';
-import { convertCurrency, convertToPPP } from '../utils/currency';
+import { convertCurrency, convertToPPP, getExpandedCompEvents } from '../utils/currency';
 
 export default function DashboardStats({
   salaryEvents,
@@ -90,27 +90,7 @@ export default function DashboardStats({
   const normCutoff = `${cutoffDate}-01`;
   const normBaseline = normalizeDate(baselineDate);
 
-  // Setup last completed day (yesterday) for realized events
-  const yesterday = new Date(today);
-  yesterday.setDate(today.getDate() - 1);
-  const getLocalDateString = (dObj) => {
-    const y = dObj.getFullYear();
-    const m = String(dObj.getMonth() + 1).padStart(2, '0');
-    const d = String(dObj.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  };
-  const yesterdayStr = getLocalDateString(yesterday);
 
-  const isCompletedEvent = (dateStr) => {
-    if (!dateStr) return false;
-    if (dateStr.length === 7) {
-      const [y, m] = dateStr.split('-');
-      const lastDay = new Date(Number(y), Number(m), 0).getDate();
-      const lastDayStr = `${y}-${m}-${String(lastDay).padStart(2, '0')}`;
-      return lastDayStr <= yesterdayStr;
-    }
-    return dateStr <= yesterdayStr;
-  };
 
   // 2. Calculate realized cumulative base salary earned over time (up to the last completed month)
   let cumulativeBaseEarned = 0;
@@ -138,17 +118,20 @@ export default function DashboardStats({
     }
   }
 
+  // Expand RSU events into visual grants and tranches (realized/projected/forfeited)
+  const expandedCompEvents = getExpandedCompEvents(compEvents, sortedSalaryEvents, cutoffDate);
+
   // 3. Sum of realized compensation
-  const totalBonus = compEvents
-    .filter(e => e.type === 'bonus' && isCompletedEvent(e.date))
+  const totalBonus = expandedCompEvents
+    .filter(e => e.type === 'bonus' && e.status === 'realized')
     .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
-  const totalGrant = compEvents
+  const totalGrant = expandedCompEvents
     .filter(e => e.type === 'grant')
     .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
-  const totalVest = compEvents
-    .filter(e => e.type === 'vest' && isCompletedEvent(e.date))
+  const totalVest = expandedCompEvents
+    .filter(e => e.type === 'vest' && e.status === 'realized')
     .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
   // 4. Realized Cumulative Compensation = Base Salary Earned + Bonus + Vests
