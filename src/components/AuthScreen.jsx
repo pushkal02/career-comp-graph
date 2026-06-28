@@ -124,7 +124,7 @@ export default function AuthScreen({ onAuthSuccess }) {
                 type="text"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="e.g. Pushkal Pandey"
+                placeholder="e.g. Pushkal Dev"
                 autoComplete="name"
                 required
               />
@@ -138,7 +138,7 @@ export default function AuthScreen({ onAuthSuccess }) {
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder={isLogin ? "e.g. pushkal@milestones.com or pushkal02" : "e.g. pushkal02"}
+              placeholder={isLogin ? "e.g. pushkal@example.com or pushkal_dev" : "e.g. pushkal_dev"}
               autoComplete="username"
               required
             />
@@ -152,7 +152,7 @@ export default function AuthScreen({ onAuthSuccess }) {
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="e.g. pushkal@milestones.com"
+                placeholder="e.g. pushkal@example.com"
                 autoComplete="email"
                 required
               />
