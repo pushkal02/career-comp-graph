@@ -132,6 +132,20 @@ To preview your production build locally:
 npm run preview
 ```
 
+### Deploying to Render
+CompGraph can be hosted as a single Node.js **Web Service** on Render, which compiles the client bundle and serves both the API and static React frontend assets seamlessly:
+
+1. **Service Type**: Web Service
+2. **Build Command**: `npm install && npm run build && npm run db:generate`
+3. **Start Command**: `npm run server`
+4. **Environment Variables**:
+   * `DATABASE_URL`: MongoDB Atlas connection string.
+   * `JWT_SECRET`: Random string for JWT signing.
+   * `NODE_ENV`: `production`
+5. **Health Check Path**: Configured to `/api/health` (returns `{ "status": "UP" }` to ensure zero-downtime rolling deploys).
+
+*(Note: Push updates to GitHub/GitLab will auto-trigger builds. You can exclude `README.md` from trigger builds in your Render environment settings under Ignored Paths.)*
+
 ---
 
 ## 🧮 Mathematical Calculations

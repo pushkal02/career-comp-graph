@@ -29,6 +29,11 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
+// API Health Check Route
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ status: 'UP', timestamp: new Date().toISOString() });
+});
+
 // API Authentication Routes
 app.post('/api/auth/signup', signup);
 app.post('/api/auth/login', login);
