@@ -225,25 +225,7 @@ interface CompEvent {
 }
 ```
 
----
 
-## 🔒 Security Architecture & Disclosure: What Can Be Revealed?
-
-CompGraph is built with a strict "privacy-first" model to isolate credentials and protect your data. If a compromise occurs, here is what can and cannot be revealed:
-
-### 1. In-Transit Sniffing (Man-in-the-Middle)
-* **Protected**: Your **plaintext password is completely secure**. Eavesdroppers only see the one-way SHA-256 fingerprint (`passwordHash`). They cannot reverse it to obtain your raw password, protecting you if you reuse it on other sites.
-* **Exposed**: The `passwordHash` transit key itself. Since the backend verifies this hash directly, an eavesdropper could capture and replay it to log in. *Deploy with HTTPS to prevent this.*
-
-### 2. Database Leak (MongoDB Compromise)
-* **Protected**: Both your **plaintext password** and your **transit SHA-256 hash** are completely secure. The database stores `bcrypt(SHA-256(password))`. Attacking this requires reversing bcrypt, which is protected by a work factor of 10 and unique random salts, rendering rainbow table attacks useless.
-* **Exposed**: Your username, display name, settings (theme, currency, start date), and all salary and compensation milestone history.
-
-### 3. Active Session Compromise (XSS / Browser Storage Leak)
-* **Protected**: Your plaintext password and transit hash are never stored on the client.
-* **Exposed**: Your active JWT session token (`comp_graph_token`), which would allow an attacker to read/modify your career trajectory for the remainder of its 30-day lifetime.
-
----
 
 Created by Pushkal Pandey with ❤️
 
