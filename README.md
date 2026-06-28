@@ -107,14 +107,7 @@ Make sure you have [Node.js](https://nodejs.org/) (v18 or higher recommended) in
    npm run db:push
    ```
 
-5. Migrate legacy SQLite data to MongoDB (One-time step):
-   If you have an existing SQLite database file (`backend/prisma/dev.db`), run the standalone migration script to transfer all users and timeline data to your MongoDB database:
-   ```bash
-   node backend/scripts/migrate.js
-   ```
-   *Note: This script runs system-wide and will safely preserve the SQLite database file for manual deletion once you confirm the data migration was successful.*
-
-6. Launch both frontend and backend development servers concurrently:
+5. Launch both frontend and backend development servers concurrently:
    ```bash
    npm run dev:all
    ```
@@ -242,7 +235,7 @@ CompGraph is built with a strict "privacy-first" model to isolate credentials an
 * **Protected**: Your **plaintext password is completely secure**. Eavesdroppers only see the one-way SHA-256 fingerprint (`passwordHash`). They cannot reverse it to obtain your raw password, protecting you if you reuse it on other sites.
 * **Exposed**: The `passwordHash` transit key itself. Since the backend verifies this hash directly, an eavesdropper could capture and replay it to log in. *Deploy with HTTPS to prevent this.*
 
-### 2. Database Leak (SQLite / PostgreSQL Compromise)
+### 2. Database Leak (MongoDB Compromise)
 * **Protected**: Both your **plaintext password** and your **transit SHA-256 hash** are completely secure. The database stores `bcrypt(SHA-256(password))`. Attacking this requires reversing bcrypt, which is protected by a work factor of 10 and unique random salts, rendering rainbow table attacks useless.
 * **Exposed**: Your username, display name, settings (theme, currency, start date), and all salary and compensation milestone history.
 
