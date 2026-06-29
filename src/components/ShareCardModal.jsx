@@ -51,6 +51,26 @@ export default function ShareCardModal({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    const today = new Date();
+    const cutoffDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+    
+    const safeNormDate = (d) => {
+      if (!d) return '';
+      return d.length === 7 ? `${d}-01` : d;
+    };
+
+    const normalizeDate = (d) => (d && d.length === 7) ? `${d}-01` : (d || '');
+
+    // Parse timelines and values
+    const sortedSalaries = [...salaryEvents].sort((a, b) => {
+      const dA = normalizeDate(a.date);
+      const dB = normalizeDate(b.date);
+      return dA.localeCompare(dB);
+    });
+
+    // Expand RSU events into visual grants and tranches (realized/projected/forfeited)
+    const expandedCompEvents = getExpandedCompEvents(compEvents, sortedSalaries, cutoffDate);
+
     // Stats computation identical to DashboardStats
     const getStats = () => {
       const baselineDate = startDate || "2024-01";
@@ -83,11 +103,6 @@ export default function ShareCardModal({
         }).format(val);
       };
 
-      const safeNormDate = (d) => {
-        if (!d) return '';
-        return d.length === 7 ? `${d}-01` : d;
-      };
-
       const getYearDiff = (date1, date2) => {
         if (!date1 || !date2) return 0;
         const d1 = new Date(safeNormDate(date1));
@@ -103,8 +118,6 @@ export default function ShareCardModal({
         return (monthDiff + dayDiff / 30.4368) / 12;
       };
 
-      const normalizeDate = (d) => (d && d.length === 7) ? `${d}-01` : (d || '');
-
       const convertValue = (amount, eventCurrency, countryCode) => {
         if (pppMode) {
           return convertToPPP(amount, eventCurrency, countryCode, exchangeRates, pppFactors);
@@ -112,12 +125,6 @@ export default function ShareCardModal({
           return convertCurrency(amount, eventCurrency, activeCurrency, exchangeRates);
         }
       };
-
-      const sortedSalaries = [...salaryEvents].sort((a, b) => {
-        const dA = normalizeDate(a.date);
-        const dB = normalizeDate(b.date);
-        return dA.localeCompare(dB);
-      });
 
       const currentBase = sortedSalaries.length > 0
         ? convertValue(sortedSalaries[sortedSalaries.length - 1].salary, sortedSalaries[sortedSalaries.length - 1].currency, sortedSalaries[sortedSalaries.length - 1].country)
@@ -133,13 +140,8 @@ export default function ShareCardModal({
         }
       }
 
-      const today = new Date();
-      const cutoffDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
       const normCutoff = `${cutoffDate}-01`;
       const normBaseline = normalizeDate(baselineDate);
-
-      // Expand RSU events into visual grants and tranches (realized/projected/forfeited)
-      const expandedCompEvents = getExpandedCompEvents(compEvents, sortedSalaries, cutoffDate);
 
       // Setup last completed day (yesterday) for realized events
       const yesterday = new Date(today);
@@ -313,17 +315,7 @@ export default function ShareCardModal({
       ctx.stroke();
     }
 
-    const safeNormDate = (d) => {
-      if (!d) return '';
-      return d.length === 7 ? `${d}-01` : d;
-    };
 
-    // Parse timelines and values
-    const sortedSalaries = [...salaryEvents].sort((a, b) => {
-      const dA = safeNormDate(a.date);
-      const dB = safeNormDate(b.date);
-      return dA.localeCompare(dB);
-    });
 
     if (sortedSalaries.length > 0) {
       // Find range
