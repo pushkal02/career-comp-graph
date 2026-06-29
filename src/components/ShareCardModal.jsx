@@ -83,9 +83,15 @@ export default function ShareCardModal({
         }).format(val);
       };
 
+      const safeNormDate = (d) => {
+        if (!d) return '';
+        return d.length === 7 ? `${d}-01` : d;
+      };
+
       const getYearDiff = (date1, date2) => {
-        const d1 = new Date(date1.length === 7 ? `${date1}-01` : date1);
-        const d2 = new Date(date2.length === 7 ? `${date2}-01` : date2);
+        if (!date1 || !date2) return 0;
+        const d1 = new Date(safeNormDate(date1));
+        const d2 = new Date(safeNormDate(date2));
         const y1 = d1.getUTCFullYear();
         const m1 = d1.getUTCMonth();
         const day1 = d1.getUTCDate();
@@ -97,7 +103,7 @@ export default function ShareCardModal({
         return (monthDiff + dayDiff / 30.4368) / 12;
       };
 
-      const normalizeDate = (d) => (d && d.length === 7) ? `${d}-01` : d;
+      const normalizeDate = (d) => (d && d.length === 7) ? `${d}-01` : (d || '');
 
       const convertValue = (amount, eventCurrency, countryCode) => {
         if (pppMode) {
@@ -107,9 +113,11 @@ export default function ShareCardModal({
         }
       };
 
-      const sortedSalaries = [...salaryEvents].sort((a, b) => 
-        normalizeDate(a.date).localeCompare(normalizeDate(b.date))
-      );
+      const sortedSalaries = [...salaryEvents].sort((a, b) => {
+        const dA = normalizeDate(a.date);
+        const dB = normalizeDate(b.date);
+        return dA.localeCompare(dB);
+      });
 
       const currentBase = sortedSalaries.length > 0
         ? convertValue(sortedSalaries[sortedSalaries.length - 1].salary, sortedSalaries[sortedSalaries.length - 1].currency, sortedSalaries[sortedSalaries.length - 1].country)
@@ -305,10 +313,17 @@ export default function ShareCardModal({
       ctx.stroke();
     }
 
+    const safeNormDate = (d) => {
+      if (!d) return '';
+      return d.length === 7 ? `${d}-01` : d;
+    };
+
     // Parse timelines and values
-    const sortedSalaries = [...salaryEvents].sort((a, b) => 
-      (a.date.length === 7 ? `${a.date}-01` : a.date).localeCompare(b.date.length === 7 ? `${b.date}-01` : b.date)
-    );
+    const sortedSalaries = [...salaryEvents].sort((a, b) => {
+      const dA = safeNormDate(a.date);
+      const dB = safeNormDate(b.date);
+      return dA.localeCompare(dB);
+    });
 
     if (sortedSalaries.length > 0) {
       // Find range
@@ -320,9 +335,10 @@ export default function ShareCardModal({
       const totalMonths = (endYear - startYear) * 12 + (12 - startMonth);
 
       const getMonthsSinceStart = (dateStr) => {
+        if (!dateStr) return 0;
         const parts = dateStr.split('-');
         const year = Number(parts[0]);
-        const month = Number(parts[1]);
+        const month = Number(parts[1]) || 1;
         const day = parts[2] ? Number(parts[2]) : 1;
         const baseMonths = (year - startYear) * 12 + (month - startMonth);
         return baseMonths + (day - 1) / 30.4368;
@@ -427,14 +443,19 @@ export default function ShareCardModal({
 
       expandedCompEvents.forEach(evt => {
         const cx = getCanvasX(evt.date);
-        let activeSalary = sortedSalaries[0].salary;
-        let activeCurrency = sortedSalaries[0].currency;
-        let activeCountry = sortedSalaries[0].country;
-        for (let i = 0; i < sortedSalaries.length; i++) {
-          if ((sortedSalaries[i].date.length === 7 ? `${sortedSalaries[i].date}-01` : sortedSalaries[i].date) <= (evt.date.length === 7 ? `${evt.date}-01` : evt.date)) {
-            activeSalary = sortedSalaries[i].salary;
-            activeCurrency = sortedSalaries[i].currency;
-            activeCountry = sortedSalaries[i].country;
+        let activeSalary = sortedSalaries.length > 0 ? sortedSalaries[0].salary : 0;
+        let activeCurrency = sortedSalaries.length > 0 ? (sortedSalaries[0].currency || 'USD') : 'USD';
+        let activeCountry = sortedSalaries.length > 0 ? (sortedSalaries[0].country || '') : '';
+        
+        if (sortedSalaries.length > 0) {
+          for (let i = 0; i < sortedSalaries.length; i++) {
+            const sDate = safeNormDate(sortedSalaries[i].date);
+            const eDate = safeNormDate(evt.date);
+            if (sDate <= eDate) {
+              activeSalary = sortedSalaries[i].salary;
+              activeCurrency = sortedSalaries[i].currency;
+              activeCountry = sortedSalaries[i].country;
+            }
           }
         }
         const cy = getCanvasY(convertValue(activeSalary, activeCurrency, activeCountry));
