@@ -135,7 +135,7 @@ export const deleteSalaryEvent = async (req, res) => {
 
 export const createCompEvent = async (req, res) => {
   try {
-    const { id, date, amount, type, title, company, currency, country, location } = req.body;
+    const { id, date, amount, type, title, company, currency, country, location, taxableIncome, financialYear, assessmentYear } = req.body;
 
     if (!id || !date || amount === undefined || !type) {
       return res.status(400).json({ error: 'ID, date, amount, and type are required.' });
@@ -151,6 +151,9 @@ export const createCompEvent = async (req, res) => {
       currency: currency || null,
       country: country || null,
       location: location || null,
+      taxableIncome: taxableIncome !== undefined && taxableIncome !== null ? parseFloat(taxableIncome) : null,
+      financialYear: financialYear || null,
+      assessmentYear: assessmentYear || null,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -172,7 +175,7 @@ export const createCompEvent = async (req, res) => {
 export const updateCompEvent = async (req, res) => {
   try {
     const { id } = req.params;
-    const { date, amount, type, title, company, currency, country, location } = req.body;
+    const { date, amount, type, title, company, currency, country, location, taxableIncome, financialYear, assessmentYear } = req.body;
 
     const user = await prisma.user.findUnique({
       where: { id: req.userId }
@@ -196,6 +199,9 @@ export const updateCompEvent = async (req, res) => {
           currency: currency !== undefined ? currency : e.currency,
           country: country !== undefined ? country : e.country,
           location: location !== undefined ? location : e.location,
+          taxableIncome: taxableIncome !== undefined ? (taxableIncome !== null ? parseFloat(taxableIncome) : null) : e.taxableIncome,
+          financialYear: financialYear !== undefined ? (financialYear !== null ? financialYear : null) : e.financialYear,
+          assessmentYear: assessmentYear !== undefined ? (assessmentYear !== null ? assessmentYear : null) : e.assessmentYear,
           updatedAt: new Date()
         };
       }
