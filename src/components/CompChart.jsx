@@ -24,12 +24,14 @@ export default function CompChart({
   const [filters, setFilters] = useState({
     salaryLine: true,
     netSalaryLine: true,
+    taxLine: true,
     hike: true,
     promotion: true,
     jobswitch: true,
     bonus: true,
     grant: true,
     vest: true,
+    tax: true,
     unvestedRsu: false, // OFF by default
     cumulativeLine: true,
     avgMonthlySalary: true,
@@ -170,10 +172,14 @@ export default function CompChart({
     const compEarned = expandedCompEvents
       .filter(evt => {
         if (evt.status === 'projected') {
-          return evt.date <= targetLimit;
+          return (evt.type === 'bonus' || evt.type === 'vest') && evt.date <= targetLimit;
         }
         return (evt.type === 'bonus' || evt.type === 'vest') && evt.date <= targetLimit;
       })
+      .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
+
+    const taxCumulative = expandedCompEvents
+      .filter(evt => evt.type === 'tax' && evt.date <= targetLimit)
       .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
       
     const totalEarned = baseEarned + compEarned;
@@ -186,6 +192,7 @@ export default function CompChart({
       salaryRate,
       baseEarned,
       compEarned,
+      taxCumulative,
       totalEarned,
       avgMonthlyScaled
     });
@@ -212,20 +219,33 @@ export default function CompChart({
     cumulativePoints[m].avgAnnualRolling = totalInWindow;
   }
 
+  // Precompute calendar year tax paid
+  const yearToTaxPaid = {};
+  expandedCompEvents.forEach(evt => {
+    if (evt.type === 'tax') {
+      const yr = evt.date.split('-')[0];
+      const convertedAmt = convertValue(Number(evt.amount), evt.currency, evt.country);
+      yearToTaxPaid[yr] = (yearToTaxPaid[yr] || 0) + convertedAmt;
+    }
+  });
+  const maxTaxYearly = Object.values(yearToTaxPaid).length > 0 ? Math.max(...Object.values(yearToTaxPaid)) : 0;
+
   // Maximum and Minimum salary for Y scale
   const salaries = salaryEvents.map(e => convertValue(e.salary, e.currency, e.country));
   const maxSalary = salaries.length > 0 ? Math.max(...salaries) : 100000;
-  const maxY = Math.ceil((maxSalary * 1.15) / 10000) * 10000; // Pad 15% and round to nearest $10k
+  const maxY = Math.ceil((Math.max(maxSalary, maxTaxYearly) * 1.15) / 10000) * 10000; // Pad 15% and round to nearest $10k
   const minY = 0;
 
-  const maxCumulative = cumulativePoints.length > 0 ? Math.max(...cumulativePoints.map(p => p.totalEarned)) : 100000;
+  const maxCumulative = cumulativePoints.length > 0 
+    ? Math.max(...cumulativePoints.map(p => Math.max(p.totalEarned, p.taxCumulative || 0))) 
+    : 100000;
   const maxYCumulative = Math.ceil((maxCumulative * 1.15) / 10000) * 10000;
   
   // Maximum average rate (salary + comp)
   const maxAverageRate = cumulativePoints.length > 0
     ? Math.max(...cumulativePoints.map(p => Math.max(p.avgMonthlyScaled || 0, p.avgAnnualRolling || 0)))
     : 100000;
-  const maxRateValue = Math.max(maxSalary, maxAverageRate);
+  const maxRateValue = Math.max(maxSalary, maxAverageRate, maxTaxYearly);
   const maxYRate = Math.ceil((maxRateValue * 1.15) / 10000) * 10000;
 
   // In cumulative mode: Y-axis scales to the cumulative total (largest value).
@@ -261,6 +281,7 @@ export default function CompChart({
         --color-bonus: ${isLightMode ? '#059669' : '#10b981'};
         --color-grant: ${isLightMode ? '#d97706' : '#f59e0b'};
         --color-vest: ${isLightMode ? '#7c3aed' : '#a855f7'};
+        --color-tax: ${isLightMode ? '#e11d48' : '#f43f5e'};
         --bg-primary: ${isLightMode ? '#f8fafc' : '#070a13'};
         --text-primary: ${isLightMode ? '#0f172a' : '#f8fafc'};
         --color-avg-monthly: ${isLightMode ? '#0284c7' : '#38bdf8'};
@@ -276,6 +297,10 @@ export default function CompChart({
       .chart-event-node rect { stroke-width: 1.5; }
       .chart-salary-label { fill: ${isLightMode ? '#0284c7' : '#38bdf8'}; stroke: ${isLightMode ? '#f8fafc' : '#070a13'}; stroke-width: 3px; paint-order: stroke; font-weight: 800; font-family: 'JetBrains Mono', monospace; font-size: 9.5px; }
       .chart-comp-label { fill: ${isLightMode ? '#0f172a' : '#f8fafc'}; stroke: ${isLightMode ? '#f8fafc' : '#070a13'}; stroke-width: 2.5px; paint-order: stroke; font-weight: 700; font-family: 'JetBrains Mono', monospace; font-size: 9px; }
+      .chart-line-tax { fill: none; stroke: var(--color-tax); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+      .chart-line-tax-shadow { fill: url(#tax-gradient); opacity: 0.06; }
+      .chart-line-tax-cumulative { fill: none; stroke: var(--color-tax); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+      .chart-line-tax-cumulative-shadow { fill: url(#tax-gradient); opacity: 0.08; }
       .chart-line-cumulative-realized { fill: none; stroke: var(--color-vest); stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
       .chart-line-cumulative-realized-shadow { fill: url(#cumulative-realized-gradient); opacity: 0.08; }
       .chart-line-cumulative-projected { fill: none; stroke: var(--color-vest); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 4,4; }
@@ -545,6 +570,8 @@ export default function CompChart({
   let salaryAreaD = '';
   let netSalaryPathD = '';
   let netSalaryAreaD = '';
+  let taxPathD = '';
+  let taxAreaD = '';
   const salarySegments = [];
   
   if (sortedSalaryEvents.length > 0) {
@@ -597,6 +624,37 @@ export default function CompChart({
 
     netSalaryPathD += ` L ${endX} ${lastNetY}`;
     netSalaryAreaD += ` L ${endX} ${lastNetY} L ${endX} ${bottomY} Z`;
+
+    // Draw annual tax paid step-line rate
+    if (expandedCompEvents.some(e => e.type === 'tax')) {
+      const taxPoints = [];
+      for (let m = 0; m <= totalMonths; m++) {
+        const yr = startYear + Math.floor((startMonth - 1 + m) / 12);
+        const mon = ((startMonth - 1 + m) % 12) + 1;
+        const dateStr = `${yr}-${String(mon).padStart(2, '0')}`;
+        const x = getX(dateStr);
+        const taxVal = yearToTaxPaid[yr] || 0;
+        const y = getY(taxVal);
+        taxPoints.push({ x, y, taxVal, yr });
+      }
+      
+      if (taxPoints.length > 0) {
+        taxPathD = `M ${taxPoints[0].x} ${taxPoints[0].y}`;
+        taxAreaD = `M ${taxPoints[0].x} ${bottomY} L ${taxPoints[0].x} ${taxPoints[0].y}`;
+        
+        let lastTaxY = taxPoints[0].y;
+        for (let i = 1; i < taxPoints.length; i++) {
+          const pt = taxPoints[i];
+          if (pt.yr !== taxPoints[i - 1].yr) {
+            taxPathD += ` L ${pt.x} ${lastTaxY} L ${pt.x} ${pt.y}`;
+            taxAreaD += ` L ${pt.x} ${lastTaxY} L ${pt.x} ${pt.y}`;
+            lastTaxY = pt.y;
+          }
+        }
+        taxPathD += ` L ${endX} ${lastTaxY}`;
+        taxAreaD += ` L ${endX} ${lastTaxY} L ${endX} ${bottomY} Z`;
+      }
+    }
 
     // Compute segments for text labels
     for (let i = 0; i < sortedSalaryEvents.length; i++) {
@@ -680,6 +738,27 @@ export default function CompChart({
     }
     const lastProjected = projectedPoints[projectedPoints.length - 1];
     cumulativeProjectedAreaD += ` L ${getX(lastProjected.dateStr)} ${bottomY} Z`;
+  }
+
+  // Cumulative tax paid path
+  let cumulativeTaxPathD = '';
+  let cumulativeTaxAreaD = '';
+  if (cumulativePoints.length > 0) {
+    const startX = getX(cumulativePoints[0].dateStr);
+    const startY = getY(cumulativePoints[0].taxCumulative);
+    cumulativeTaxPathD = `M ${startX} ${startY}`;
+    cumulativeTaxAreaD = `M ${startX} ${bottomY} L ${startX} ${startY}`;
+    
+    for (let i = 1; i < cumulativePoints.length; i++) {
+      const pt = cumulativePoints[i];
+      const x = getX(pt.dateStr);
+      const y = getY(pt.taxCumulative);
+      cumulativeTaxPathD += ` L ${x} ${y}`;
+      cumulativeTaxAreaD += ` L ${x} ${y}`;
+    }
+    const lastPoint = cumulativePoints[cumulativePoints.length - 1];
+    const endX = getX(lastPoint.dateStr);
+    cumulativeTaxAreaD += ` L ${endX} ${bottomY} Z`;
   }
 
   // Average paths
@@ -881,31 +960,37 @@ export default function CompChart({
           ? [
               { key: 'salaryLine', label: 'Gross Salary Line', color: 'var(--color-base)' },
               { key: 'netSalaryLine', label: 'Net Take-Home Line', color: '#10b981' },
+              { key: 'taxLine', label: 'Annual Direct Tax Paid', color: 'var(--color-tax)' },
               { key: 'hike', label: 'Salary Hikes', color: 'var(--color-hike)' },
               { key: 'promotion', label: 'Promotions', color: 'var(--color-promotion)' },
               { key: 'jobswitch', label: 'Job Switches', color: 'var(--color-switch)' },
               { key: 'bonus', label: 'Bonuses', color: 'var(--color-bonus)' },
               { key: 'grant', label: 'Grants', color: 'var(--color-grant)' },
-              { key: 'vest', label: 'Vesting', color: 'var(--color-vest)' }
+              { key: 'vest', label: 'Vesting', color: 'var(--color-vest)' },
+              { key: 'tax', label: 'Direct Tax Paid', color: 'var(--color-tax)' }
             ]
           : [
               { key: 'cumulativeLine', label: 'Cumulative Earnings', color: 'var(--color-vest)' },
+              { key: 'taxLine', label: 'Cumulative Direct Tax Paid', color: 'var(--color-tax)' },
               { key: 'avgMonthlySalary', label: 'Cumulative Average Earnings', color: 'var(--color-avg-monthly)' },
               { key: 'avgAnnualSalary', label: 'Rolling Average Earnings', color: 'var(--color-avg-annual)' },
               { key: 'bonus', label: 'Bonuses', color: 'var(--color-bonus)' },
-              { key: 'vest', label: 'Vesting', color: 'var(--color-vest)' }
+              { key: 'vest', label: 'Vesting', color: 'var(--color-vest)' },
+              { key: 'tax', label: 'Direct Tax Paid', color: 'var(--color-tax)' }
             ]
         ).map((filter) => {
           const isActive = filters[filter.key];
           let rgbString = '168, 85, 247'; // Default violet
           if (filter.key === 'salaryLine') rgbString = '56, 189, 248';
           else if (filter.key === 'netSalaryLine') rgbString = '16, 185, 129';
+          else if (filter.key === 'taxLine') rgbString = '244, 63, 94';
           else if (filter.key === 'hike') rgbString = '20, 184, 166';
           else if (filter.key === 'promotion') rgbString = '236, 72, 153';
           else if (filter.key === 'jobswitch') rgbString = '59, 130, 246';
           else if (filter.key === 'bonus') rgbString = '16, 185, 129';
           else if (filter.key === 'grant') rgbString = '245, 158, 11';
           else if (filter.key === 'vest') rgbString = '168, 85, 247';
+          else if (filter.key === 'tax') rgbString = '244, 63, 94';
           else if (filter.key === 'unvestedRsu') rgbString = '168, 85, 247';
           else if (filter.key === 'cumulativeLine') rgbString = '168, 85, 247';
           else if (filter.key === 'avgMonthlySalary') rgbString = '14, 165, 233';
@@ -964,6 +1049,10 @@ export default function CompChart({
               <linearGradient id="net-salary-gradient" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#10b981" stopOpacity="0.35" />
                 <stop offset="100%" stopColor="#10b981" stopOpacity="0.0" />
+              </linearGradient>
+              <linearGradient id="tax-gradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--color-tax)" stopOpacity="0.3" />
+                <stop offset="100%" stopColor="var(--color-tax)" stopOpacity="0.0" />
               </linearGradient>
 
               {/* Cumulative Gradients */}
@@ -1028,6 +1117,10 @@ export default function CompChart({
             {/* Render lines and nodes based on Mode */}
             {chartMode === 'rate' ? (
               <g>
+                {/* Annual Tax Step Line & Area */}
+                {filters.taxLine && taxAreaD && <path className="chart-line-tax-shadow" d={taxAreaD} />}
+                {filters.taxLine && taxPathD && <path className="chart-line-tax" d={taxPathD} />}
+
                 {/* Net Salary Step Line & Area */}
                 {filters.netSalaryLine && netSalaryAreaD && <path className="chart-line-net-shadow" d={netSalaryAreaD} />}
                 {filters.netSalaryLine && netSalaryPathD && <path className="chart-line-net-salary" d={netSalaryPathD} />}
@@ -1215,6 +1308,9 @@ export default function CompChart({
                           } else if (evt.type === 'vest') {
                             fillColor = 'rgba(168, 85, 247, 0.22)';
                             strokeColor = 'var(--color-vest)';
+                          } else if (evt.type === 'tax') {
+                            fillColor = 'rgba(244, 63, 94, 0.22)';
+                            strokeColor = 'var(--color-tax)';
                           } else if (evt.type === 'rsu_forfeited') {
                             fillColor = 'rgba(148, 163, 184, 0.08)';
                             strokeColor = '#94a3b8';
@@ -1234,13 +1330,17 @@ export default function CompChart({
                                     x: x,
                                     y: y - radius - 10,
                                     title: evt.title,
-                                    value: pppMode ? formatFullCurrency(convertValue(evt.amount, evt.currency, evt.country)) : formatFullCurrency(evt.amount, evt.currency),
+                                    value: formatFullCurrency(convertValue(evt.amount, evt.currency, evt.country)),
+                                    amount: evt.amount,
                                     date: formatDateLabel(evt.date),
                                     type: evt.type,
                                     company: evt.company || 'Self-Employed',
                                     country: evt.country,
                                     location: getRsuLocation(evt),
-                                    category: 'comp'
+                                    category: 'comp',
+                                    taxableIncome: evt.taxableIncome,
+                                    financialYear: evt.financialYear,
+                                    assessmentYear: evt.assessmentYear
                                   });
                                 }}
                                 onMouseLeave={() => setHoveredItem(null)}
@@ -1294,7 +1394,7 @@ export default function CompChart({
                                     x: x,
                                     y: y - radius - 10,
                                     title: evt.title,
-                                    value: pppMode ? formatFullCurrency(convertValue(evt.amount, evt.currency, evt.country)) : formatFullCurrency(evt.amount, evt.currency),
+                                    value: formatFullCurrency(convertValue(evt.amount, evt.currency, evt.country)),
                                     date: formatDateLabel(evt.date),
                                     type: evt.type,
                                     company: evt.company || 'Self-Employed',
@@ -1346,6 +1446,14 @@ export default function CompChart({
               </g>
             ) : (
               <g>
+                {/* Cumulative Tax Area & Line */}
+                {filters.taxLine && cumulativeTaxAreaD && (
+                  <path className="chart-line-tax-cumulative-shadow" d={cumulativeTaxAreaD} />
+                )}
+                {filters.taxLine && cumulativeTaxPathD && (
+                  <path className="chart-line-tax-cumulative" d={cumulativeTaxPathD} />
+                )}
+
                 {/* Cumulative Realized Area & Line */}
                 {filters.cumulativeLine && cumulativeRealizedAreaD && (
                   <path className="chart-line-cumulative-realized-shadow" d={cumulativeRealizedAreaD} />
@@ -1380,7 +1488,7 @@ export default function CompChart({
                     if (evt.status === 'projected') {
                       return true;
                     }
-                    return (evt.type === 'bonus' || evt.type === 'vest') && filters[evt.type];
+                    return (evt.type === 'bonus' || evt.type === 'vest' || evt.type === 'tax') && filters[evt.type];
                   });
                   return cumulativeCompEvents.map((evt) => {
                     const normDate = normalizeDate(evt.date);
@@ -1389,10 +1497,12 @@ export default function CompChart({
                     if (!pt) return null;
                     
                     const x = getX(evt.date);
+                    // In cumulative mode, plot the point on the cumulative earnings line
                     const y = getY(pt.totalEarned);
                     
                     let color = 'var(--color-bonus)';
                     if (evt.type === 'vest') color = 'var(--color-vest)';
+                    if (evt.type === 'tax') color = 'var(--color-tax)';
                     
                     return (
                       <g
@@ -1405,13 +1515,17 @@ export default function CompChart({
                             x: x,
                             y: y - 15,
                             title: evt.title,
-                            value: pppMode ? formatFullCurrency(convertValue(evt.amount, evt.currency, evt.country)) : formatFullCurrency(evt.amount, evt.currency),
+                            value: formatFullCurrency(convertValue(evt.amount, evt.currency, evt.country)),
+                            amount: evt.amount,
                             date: formatDateLabel(evt.date),
                             type: evt.type,
                             company: evt.company || 'Self-Employed',
                             country: evt.country,
                             location: getRsuLocation(evt),
-                            category: 'comp'
+                            category: 'comp',
+                            taxableIncome: evt.taxableIncome,
+                            financialYear: evt.financialYear,
+                            assessmentYear: evt.assessmentYear
                           });
                         }}
                         onMouseLeave={() => setHoveredItem(null)}
@@ -1462,13 +1576,26 @@ export default function CompChart({
           >
             <div className="tooltip-title">
               <span className={`tooltip-badge ${hoveredItem.type}`} style={{ textTransform: 'capitalize' }}>
-                {hoveredItem.type === 'rsu_forfeited' ? 'Forfeited' : (hoveredItem.type === 'jobswitch' ? 'Job Switch' : hoveredItem.type)}
+                {hoveredItem.type === 'rsu_forfeited' ? 'Forfeited' : (hoveredItem.type === 'jobswitch' ? 'Job Switch' : (hoveredItem.type === 'tax' ? 'Direct Tax Paid' : hoveredItem.type))}
               </span>
               <span style={{ fontSize: '0.8rem', fontWeight: 600, wordBreak: 'break-word', display: 'inline-block', maxWidth: '220px' }}>
                 {hoveredItem.title}
               </span>
             </div>
             <div className="tooltip-value">{hoveredItem.value}</div>
+            {hoveredItem.type === 'tax' && (
+              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem', marginBottom: '0.1rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                {hoveredItem.taxableIncome !== undefined && (
+                  <div>Taxable Income: <strong style={{ color: 'var(--text-primary)' }}>{formatFullCurrency(convertValue(hoveredItem.taxableIncome, hoveredItem.currency, hoveredItem.country))}</strong></div>
+                )}
+                {hoveredItem.taxableIncome > 0 && hoveredItem.amount > 0 && (
+                  <div>Effective Tax Rate: <strong style={{ color: 'var(--color-tax)' }}>{((Number(hoveredItem.amount) / Number(hoveredItem.taxableIncome)) * 100).toFixed(1)}%</strong></div>
+                )}
+                {hoveredItem.financialYear && (
+                  <div>Period: <strong style={{ color: 'var(--text-primary)' }}>{hoveredItem.financialYear} ({hoveredItem.assessmentYear})</strong></div>
+                )}
+              </div>
+            )}
             {hoveredItem.category === 'salary' && hoveredItem.convertedGross !== undefined && (
               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem', marginBottom: '0.1rem', display: 'flex', flexDirection: 'column', gap: '2px' }}>
                 <div>Monthly Gross: <strong style={{ color: 'var(--text-primary)' }}>{formatFullCurrency(hoveredItem.convertedGross)}</strong></div>
@@ -1482,7 +1609,7 @@ export default function CompChart({
                 )}
               </div>
             )}
-            {hoveredItem.company && (
+            {hoveredItem.company && hoveredItem.type !== 'tax' && (
               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '0.2rem', marginBottom: '0.1rem' }}>
                 Employer: <strong style={{ color: 'var(--color-primary)' }}>{hoveredItem.company}</strong>
               </div>
@@ -1632,6 +1759,7 @@ function CompanyEarningsList({
 
     // 2. Add comp events
     expandedCompEvents.forEach(evt => {
+      if (evt.type === 'tax') return; // Skip tax events in organization earnings
       if (normalizeDate(evt.date) >= normCutoff) return;
 
       const companyName = evt.company || 'Self-Employed';
@@ -2040,6 +2168,13 @@ function PeriodicEarningsList({
       })
       .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
+    const taxPaid = expandedCompEvents
+      .filter(e => {
+        const normDate = normalizeDate(e.date);
+        return e.type === 'tax' && normDate >= p.start && normDate < p.end;
+      })
+      .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
+
     const totalEarned = baseEarned + bonusEarned + vestEarned;
 
     return {
@@ -2050,6 +2185,7 @@ function PeriodicEarningsList({
       base: baseEarned,
       bonus: bonusEarned,
       vest: vestEarned,
+      tax: taxPaid,
       total: totalEarned
     };
   });
@@ -2063,8 +2199,26 @@ function PeriodicEarningsList({
       } else {
         current.growth = null;
       }
+
+      // Calculate Net Comp and growth
+      const currentNet = current.total - current.tax;
+      const prevNet = prev.total - prev.tax;
+      if (prevNet > 0) {
+        current.netGrowth = ((currentNet - prevNet) / prevNet) * 100;
+      } else {
+        current.netGrowth = null;
+      }
+
+      // Calculate Tax and growth
+      if (prev.tax > 0) {
+        current.taxGrowth = ((current.tax - prev.tax) / prev.tax) * 100;
+      } else {
+        current.taxGrowth = null;
+      }
     } else {
       current.growth = null;
+      current.netGrowth = null;
+      current.taxGrowth = null;
     }
   }
 
@@ -2089,6 +2243,12 @@ function PeriodicEarningsList({
   else cleanStep = 10;
   cleanStep = cleanStep * (magnitude || 1);
   const maxYComp = cleanStep * 4;
+  const maxTaxVal = Math.max(...activePeriods.map(p => p.tax || 0), 0);
+  let taxSteps = 0;
+  if (maxTaxVal > 0) {
+    taxSteps = Math.ceil(maxTaxVal / cleanStep);
+  }
+  const minYComp = -taxSteps * cleanStep;
 
   // Right Y axis (Growth %) scale logic
   const growthValues = activePeriods
@@ -2114,7 +2274,8 @@ function PeriodicEarningsList({
   const chartWidth = 680 - chartPadding.left - chartPadding.right;
 
   const getYComp = (val) => {
-    const ratio = val / maxYComp;
+    const range = maxYComp - minYComp;
+    const ratio = (val - minYComp) / range;
     return chartPadding.top + chartHeight - ratio * chartHeight;
   };
 
@@ -2305,25 +2466,22 @@ function PeriodicEarningsList({
                 </text>
               )}
 
-              {/* Shared Horizontal grid lines (5 lines) */}
-              {Array.from({ length: 5 }).map((_, idx) => {
-                const y = chartPadding.top + chartHeight - (idx * chartHeight) / 4;
-                const compVal = (idx * maxYComp) / 4;
-                const growthVal = minGrowthScale + idx * cleanStepGrowth;
-                
-                return (
-                  <g key={idx}>
-                    <line
-                      x1={chartPadding.left}
-                      y1={y}
-                      x2={680 - chartPadding.right}
-                      y2={y}
-                      stroke="rgba(255, 255, 255, 0.05)"
-                      strokeDasharray="4 4"
-                    />
-                    
-                    {/* Left Axis ticks (Total Comp) */}
-                    {showTotalComp && (
+              {/* Shared Horizontal grid lines */}
+              {showTotalComp ? (
+                // Draw based on compensation scale (positive & negative axes)
+                Array.from({ length: 4 + taxSteps + 1 }).map((_, idx) => {
+                  const compVal = minYComp + idx * cleanStep;
+                  const y = getYComp(compVal);
+                  return (
+                    <g key={`comp_grid_${idx}`}>
+                      <line
+                        x1={chartPadding.left}
+                        y1={y}
+                        x2={680 - chartPadding.right}
+                        y2={y}
+                        stroke="rgba(255, 255, 255, 0.05)"
+                        strokeDasharray="4 4"
+                      />
                       <text
                         x={chartPadding.left - 10}
                         y={y + 4}
@@ -2335,25 +2493,58 @@ function PeriodicEarningsList({
                       >
                         {formatShortCurrency ? formatShortCurrency(compVal) : `${compVal}`}
                       </text>
-                    )}
+                    </g>
+                  );
+                })
+              ) : (
+                // Draw based on growth scale
+                showGrowth && Array.from({ length: 5 }).map((_, idx) => {
+                  const y = chartPadding.top + chartHeight - (idx * chartHeight) / 4;
+                  return (
+                    <line
+                      key={`growth_grid_${idx}`}
+                      x1={chartPadding.left}
+                      y1={y}
+                      x2={680 - chartPadding.right}
+                      y2={y}
+                      stroke="rgba(255, 255, 255, 0.05)"
+                      strokeDasharray="4 4"
+                    />
+                  );
+                })
+              )}
 
-                    {/* Right Axis ticks (Growth %) */}
-                    {showGrowth && (
-                      <text
-                        x={680 - chartPadding.right + 10}
-                        y={y + 4}
-                        textAnchor="start"
-                        fill="rgba(16, 185, 129, 0.85)"
-                        fontSize="10px"
-                        fontFamily="var(--font-mono)"
-                        fontWeight="600"
-                      >
-                        {growthVal === 0 ? '0%' : `${growthVal > 0 ? '+' : ''}${growthVal.toFixed(0)}%`}
-                      </text>
-                    )}
-                  </g>
+              {/* Right Axis ticks (Growth %) */}
+              {showGrowth && Array.from({ length: 5 }).map((_, idx) => {
+                const growthVal = minGrowthScale + idx * cleanStepGrowth;
+                const y = getGrowthY(growthVal);
+                return (
+                  <text
+                    key={`growth_tick_${idx}`}
+                    x={680 - chartPadding.right + 10}
+                    y={y + 4}
+                    textAnchor="start"
+                    fill="rgba(16, 185, 129, 0.85)"
+                    fontSize="10px"
+                    fontFamily="var(--font-mono)"
+                    fontWeight="600"
+                  >
+                    {growthVal === 0 ? '0%' : `${growthVal > 0 ? '+' : ''}${growthVal.toFixed(0)}%`}
+                  </text>
                 );
               })}
+
+              {/* Zero line for compensation chart */}
+              {showTotalComp && minYComp < 0 && (
+                <line
+                  x1={chartPadding.left}
+                  y1={getYComp(0)}
+                  x2={680 - chartPadding.right}
+                  y2={getYComp(0)}
+                  stroke="rgba(99, 102, 241, 0.35)"
+                  strokeWidth="1.2"
+                />
+              )}
 
               {/* Zero line for growth chart */}
               {showGrowth && (
@@ -2406,7 +2597,7 @@ function PeriodicEarningsList({
                 return (
                   <g key={p.id}>
                     {/* 1. Total Comp Stacked Bar */}
-                    {showTotalComp && p.total > 0 && (
+                    {showTotalComp && (p.total > 0 || p.tax > 0) && (
                       <g className="total-comp-bar-group">
                         {/* Base salary segment */}
                         {p.base > 0 && (
@@ -2443,6 +2634,19 @@ function PeriodicEarningsList({
                             height={yBonus - yTotal}
                             fill="rgba(168, 85, 247, 0.25)"
                             stroke="var(--color-vest)"
+                            strokeWidth="1.5"
+                            rx={2}
+                          />
+                        )}
+                        {/* Tax segment (negative axis) */}
+                        {p.tax > 0 && (
+                          <rect
+                            x={compBarX}
+                            y={yZero}
+                            width={compBarWidth}
+                            height={getYComp(-p.tax) - yZero}
+                            fill="rgba(244, 63, 94, 0.25)"
+                            stroke="var(--color-tax)"
                             strokeWidth="1.5"
                             rx={2}
                           />
@@ -2626,18 +2830,38 @@ function PeriodicEarningsList({
                   {showTotalComp && (
                     <div style={{ marginTop: '0.35rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                        Total Comp: <strong style={{ color: 'var(--color-primary)' }}>{formatFullCurrency(hoveredBar.total)}</strong>
+                        Gross Comp: <strong style={{ color: 'var(--text-primary)' }}>{formatFullCurrency(hoveredBar.total)}</strong>
+                        {hoveredBar.growth !== null && showGrowth && (
+                          <span style={{ fontSize: '0.68rem', color: hoveredBar.growth > 0 ? '#10b981' : '#ef4444', marginLeft: '0.35rem', fontWeight: 600 }}>
+                            ({hoveredBar.growth > 0 ? '+' : ''}{hoveredBar.growth.toFixed(1)}%)
+                          </span>
+                        )}
                       </div>
-                      {prevP && showGrowth && (
-                        <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                          Prev Period: <strong>{formatFullCurrency(prevP.total)}</strong>
+                      {hoveredBar.tax > 0 && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          Tax Paid: <strong style={{ color: 'var(--color-tax)' }}>-{formatFullCurrency(hoveredBar.tax)}</strong>
+                          {hoveredBar.taxGrowth !== null && showGrowth && (
+                            <span style={{ fontSize: '0.68rem', color: hoveredBar.taxGrowth > 0 ? '#ef4444' : '#10b981', marginLeft: '0.35rem', fontWeight: 600 }}>
+                              ({hoveredBar.taxGrowth > 0 ? '+' : ''}{hoveredBar.taxGrowth.toFixed(1)}%)
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {hoveredBar.tax > 0 && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                          Net Realized: <strong style={{ color: 'var(--color-primary)' }}>{formatFullCurrency(hoveredBar.total - hoveredBar.tax)}</strong>
+                          {hoveredBar.netGrowth !== null && showGrowth && (
+                            <span style={{ fontSize: '0.68rem', color: hoveredBar.netGrowth > 0 ? '#10b981' : '#ef4444', marginLeft: '0.35rem', fontWeight: 600 }}>
+                              ({hoveredBar.netGrowth > 0 ? '+' : ''}{hoveredBar.netGrowth.toFixed(1)}%)
+                            </span>
+                          )}
                         </div>
                       )}
                     </div>
                   )}
 
                   {/* Breakdown context */}
-                  {showTotalComp && (hoveredBar.base > 0 || hoveredBar.bonus > 0 || hoveredBar.vest > 0) && (
+                  {showTotalComp && (hoveredBar.base > 0 || hoveredBar.bonus > 0 || hoveredBar.vest > 0 || hoveredBar.tax > 0) && (
                     <div style={{
                       borderTop: '1px solid rgba(255, 255, 255, 0.06)',
                       marginTop: '0.5rem',
@@ -2673,6 +2897,24 @@ function PeriodicEarningsList({
                             <span>Vested</span>
                           </div>
                           <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatFullCurrency(hoveredBar.vest)}</span>
+                        </div>
+                      )}
+                      {hoveredBar.tax > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-tax)' }}></span>
+                            <span>Direct Tax Paid</span>
+                          </div>
+                          <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatFullCurrency(hoveredBar.tax)}</span>
+                        </div>
+                      )}
+                      {hoveredBar.tax > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', borderTop: '1px dashed rgba(255, 255, 255, 0.08)', paddingTop: '0.2rem', marginTop: '0.2rem' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                            <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: 'var(--color-primary)' }}></span>
+                            <span>Net Realized</span>
+                          </div>
+                          <span style={{ color: 'var(--color-primary)', fontWeight: 700 }}>{formatFullCurrency(hoveredBar.total - hoveredBar.tax)}</span>
                         </div>
                       )}
                     </div>
@@ -2735,6 +2977,18 @@ function PeriodicEarningsList({
               }
             }
 
+            const isTaxPos = p.taxGrowth !== null && p.taxGrowth > 0;
+            const taxSign = p.taxGrowth !== null && p.taxGrowth > 0 ? '+' : '';
+            const taxGrowthColor = isTaxPos ? '#ef4444' : '#10b981';
+            const taxGrowthBg = isTaxPos ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)';
+            const taxGrowthBorder = isTaxPos ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.2)';
+
+            const isNetPos = p.netGrowth !== null && p.netGrowth > 0;
+            const netSign = p.netGrowth !== null && p.netGrowth > 0 ? '+' : '';
+            const netGrowthColor = isNetPos ? '#10b981' : '#ef4444';
+            const netGrowthBg = isNetPos ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)';
+            const netGrowthBorder = isNetPos ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+
             return (
               <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.85rem' }}>
@@ -2744,11 +2998,37 @@ function PeriodicEarningsList({
                   </div>
                   {showTotalComp && (
                     <div style={{ fontWeight: 600 }}>
-                      <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginRight: '0.35rem' }}>Total:</span>
-                      <span style={{ color: 'var(--color-primary)' }}>{formatFullCurrency(p.total)}</span>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginRight: '0.25rem' }}>Gross:</span>
+                      <span style={{ color: 'var(--text-primary)' }}>{formatFullCurrency(p.total)}</span>
                     </div>
                   )}
                 </div>
+
+                {showTotalComp && p.tax > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.78rem', marginTop: '-0.1rem', marginBottom: '0.15rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <span style={{ color: 'var(--color-tax)', fontSize: '0.72rem', background: 'rgba(244, 63, 94, 0.08)', border: '1px solid rgba(244, 63, 94, 0.2)', padding: '0.1rem 0.45rem', borderRadius: '4px', fontWeight: 600 }}>
+                        Tax Paid: -{formatFullCurrency(p.tax)}
+                      </span>
+                      {p.taxGrowth !== null && showGrowth && (
+                        <span style={{ fontSize: '0.68rem', padding: '0.05rem 0.3rem', borderRadius: '4px', border: `1px solid ${taxGrowthBorder}`, background: taxGrowthBg, color: taxGrowthColor, fontWeight: 600 }}>
+                          {taxSign}{p.taxGrowth.toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                      <div>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginRight: '0.25rem' }}>Net Realized:</span>
+                        <span style={{ color: 'var(--color-primary)' }}>{formatFullCurrency(p.total - p.tax)}</span>
+                      </div>
+                      {p.netGrowth !== null && showGrowth && (
+                        <span style={{ fontSize: '0.68rem', padding: '0.05rem 0.3rem', borderRadius: '4px', border: `1px solid ${netGrowthBorder}`, background: netGrowthBg, color: netGrowthColor, fontWeight: 600 }}>
+                          {netSign}{p.netGrowth.toFixed(1)}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 {/* Progress Stacks */}
                 {showTotalComp && (
@@ -2792,6 +3072,18 @@ function PeriodicEarningsList({
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                           <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-vest)' }}></span>
                           <span>Vested: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.vest)}</strong> ({p.total > 0 ? ((p.vest / p.total) * 100).toFixed(0) : 0}%)</span>
+                        </div>
+                      )}
+                      {p.tax > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-tax)' }}></span>
+                          <span>Direct Tax Paid: <strong style={{ color: 'var(--text-secondary)' }}>{formatFullCurrency(p.tax)}</strong>{p.taxableIncome > 0 && ` (Effective Rate: ${((p.tax / p.taxableIncome) * 100).toFixed(1)}%)`}</span>
+                        </div>
+                      )}
+                      {p.tax > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: 'var(--color-primary)' }}></span>
+                          <span>Net Realized: <strong style={{ color: 'var(--color-primary)' }}>{formatFullCurrency(p.total - p.tax)}</strong></span>
                         </div>
                       )}
                     </div>

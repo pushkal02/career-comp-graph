@@ -197,13 +197,20 @@ export default function ShareCardModal({
         .filter(e => e.type === 'vest' && isCompletedEvent(e.date))
         .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
+      const totalTax = expandedCompEvents
+        .filter(e => e.type === 'tax' && isCompletedEvent(e.date))
+        .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
+
       const totalRealized = cumulativeBaseEarned + totalBonus + totalVest;
+      const netRealized = totalRealized - totalTax;
 
       return {
         currentBase: formatCurrencyVal(currentBase),
         totalBonus: formatCurrencyVal(totalBonus),
         totalVest: formatCurrencyVal(totalVest),
         totalRealized: formatCurrencyVal(totalRealized),
+        totalTax: formatCurrencyVal(totalTax),
+        netRealized: formatCurrencyVal(netRealized),
         growthPct,
         milestonesCount: salaryEvents.length + expandedCompEvents.length,
         activeCurrency
@@ -458,6 +465,7 @@ export default function ShareCardModal({
         let eventColor = '#10b981'; // bonus
         if (evt.type === 'grant') eventColor = '#f59e0b';
         if (evt.type === 'vest') eventColor = '#a855f7';
+        if (evt.type === 'tax') eventColor = '#f43f5e';
         if (evt.type === 'rsu_forfeited') eventColor = '#94a3b8';
 
         ctx.fillStyle = `${eventColor}4D`;
@@ -477,18 +485,18 @@ export default function ShareCardModal({
       ctx.setLineDash([]);
     }
 
-    // 6. Stats Grid at bottom
-    const statBoxLabels = ['Realized Career Earnings', 'Current Salary', 'Realized Cash Bonuses', 'Realized Vested Stock'];
-    const statBoxKeys = ['totalRealized', 'currentBase', 'totalBonus', 'totalVest'];
-    const statColors = [primaryColor, accentColor, '#10b981', '#a855f7'];
+    // 6. Stats Grid at bottom (5 boxes for Gross, Net, Bonus, Stock, and Tax)
+    const statBoxLabels = ['Gross Career Earnings', 'Net Realized Earnings', 'Realized Cash Bonuses', 'Realized Vested Stock', 'Direct Tax Paid'];
+    const statBoxKeys = ['totalRealized', 'netRealized', 'totalBonus', 'totalVest', 'totalTax'];
+    const statColors = [primaryColor, '#10b981', accentColor, '#a855f7', '#f43f5e'];
 
-    const boxW = 225;
+    const boxW = 190;
     const boxH = 95;
-    const startBoxX = 90;
-    const boxGap = 40;
+    const startBoxX = 85;
+    const boxGap = 20;
     const boxY = 445;
 
-    for (let i = 0; i < 4; i++) {
+    for (let i = 0; i < 5; i++) {
       const bX = startBoxX + i * (boxW + boxGap);
       
       ctx.fillStyle = isLightMode ? 'rgba(15, 23, 42, 0.03)' : 'rgba(255, 255, 255, 0.02)';
@@ -502,34 +510,36 @@ export default function ShareCardModal({
       ctx.fillRect(bX, boxY + 10, 4, boxH - 20);
 
       ctx.fillStyle = textSecondary;
-      ctx.font = '600 12px system-ui, -apple-system, sans-serif';
-      ctx.fillText(statBoxLabels[i], bX + 20, boxY + 30);
+      ctx.font = '600 11px system-ui, -apple-system, sans-serif';
+      ctx.fillText(statBoxLabels[i], bX + 15, boxY + 30);
 
       const statVal = stats[statBoxKeys[i]];
       ctx.fillStyle = textPrimary;
-      ctx.font = 'bold 24px monospace';
+      ctx.font = 'bold 21px monospace';
 
       if (redact) {
-        ctx.fillText('••••••', bX + 20, boxY + 68);
+        ctx.fillText('••••••', bX + 15, boxY + 68);
         ctx.fillStyle = isLightMode ? 'rgba(15, 23, 42, 0.9)' : 'rgba(255, 255, 255, 0.9)';
-        ctx.fillRect(bX + 18, boxY + 46, 115, 26);
+        ctx.fillRect(bX + 13, boxY + 46, 95, 26);
       } else {
-        ctx.fillText(statVal, bX + 20, boxY + 68);
+        ctx.fillText(statVal, bX + 15, boxY + 68);
       }
 
       ctx.fillStyle = textSecondary;
-      ctx.font = '500 11px system-ui, -apple-system, sans-serif';
+      ctx.font = '500 10px system-ui, -apple-system, sans-serif';
       let subtext;
       if (i === 0) {
         subtext = 'Base + Bonus + Vested';
       } else if (i === 1) {
-        subtext = stats.growthPct > 0 ? `+${stats.growthPct.toFixed(1)}% growth rate` : 'Annualized rate';
+        subtext = 'Gross minus Direct Tax';
       } else if (i === 2) {
         subtext = 'Performance milestones';
-      } else {
+      } else if (i === 3) {
         subtext = 'Realized equity value';
+      } else {
+        subtext = 'Total government tax';
       }
-      ctx.fillText(subtext, bX + 20, boxY + 86);
+      ctx.fillText(subtext, bX + 15, boxY + 86);
     }
   }, [theme, showName, redact, salaryEvents, compEvents, startDate, currency, userName, pppMode, exchangeRates, pppFactors]);
 

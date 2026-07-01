@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PlusCircle, Trash2, Shield, TrendingUp, Calendar, Tag, Briefcase, Edit3, X, Check, MapPin } from 'lucide-react';
+import { PlusCircle, Trash2, Shield, TrendingUp, Calendar, Tag, Briefcase, Edit3, X, Check, MapPin, Receipt } from 'lucide-react';
 import { COUNTRIES, getCountryByCurrency, parseRsuTranches, getRsuLocation } from '../utils/currency';
 
 const generateTranches = (templateType, totalAmt, startYearVal, startMonthVal) => {
@@ -49,6 +49,22 @@ const generateTranches = (templateType, totalAmt, startYearVal, startMonthVal) =
     });
   }
   return tranches;
+};
+
+const calculateFYAndAY = (yearStr, monthStr) => {
+  const y = parseInt(yearStr);
+  if (isNaN(y)) return { fy: '', ay: '' };
+  
+  const fyStart = y - 1;
+  const fyEnd = y;
+  
+  const ayStart = y;
+  const ayEnd = y + 1;
+  
+  return {
+    fy: `FY ${fyStart}-${String(fyEnd).slice(-2)}`,
+    ay: `AY ${ayStart}-${String(ayEnd).slice(-2)}`
+  };
 };
 
 export default function EventForm({ 
@@ -132,6 +148,7 @@ export default function EventForm({
   const [compWorkType, setCompWorkType] = useState('Company'); // Company, Freelance, Self-Employed
   const [compCompany, setCompCompany] = useState('');
   const [compLocation, setCompLocation] = useState('');
+  const [compTaxableIncome, setCompTaxableIncome] = useState('');
 
   // Editing state
   const [editingEvent, setEditingEvent] = useState(null); // stores { ...event, eventCategory: 'salary'|'comp' }
@@ -147,6 +164,7 @@ export default function EventForm({
   const [editCompany, setEditCompany] = useState('');
   const [editLocation, setEditLocation] = useState('');
   const [editNetVal, setEditNetVal] = useState('');
+  const [editTaxableIncome, setEditTaxableIncome] = useState('');
 
   // RSU form state
   const [rsuYear, setRsuYear] = useState(() => (startDate || '2024-01').split('-')[0]);
@@ -236,21 +254,27 @@ export default function EventForm({
     e.preventDefault();
     if (!compYear || !compMonth || !compAmount || Number(compAmount) === 0) return;
 
+    const { fy, ay } = calculateFYAndAY(compYear, compMonth);
+
     onAddCompEvent({
       date: getCombinedDate(compYear, compMonth, compDay),
       amount: Number(compAmount),
       type: compType,
       currency: compCurrency,
       title: compTitle.trim() || getDefaultCompTitle(compType),
-      company: compWorkType === 'Company' ? compCompany.trim() || 'Self-Employed' : compWorkType,
-      location: compLocation.trim() || undefined,
-      country: compCountry
+      company: compType === 'tax' ? 'Government' : (compWorkType === 'Company' ? compCompany.trim() || 'Self-Employed' : compWorkType),
+      location: compType === 'tax' ? undefined : (compLocation.trim() || undefined),
+      country: compCountry,
+      taxableIncome: compType === 'tax' && compTaxableIncome ? Number(compTaxableIncome) : undefined,
+      financialYear: compType === 'tax' ? fy : undefined,
+      assessmentYear: compType === 'tax' ? ay : undefined
     });
 
     // Reset inputs
     setCompTitle('');
     setCompCompany('');
     setCompLocation('');
+    setCompTaxableIncome('');
   };
 
   const handleRsuSubmit = (e) => {
@@ -306,6 +330,7 @@ export default function EventForm({
     setEditTitle(item.title || '');
     setEditLocation(item.type === 'rsu' ? getRsuLocation(item) : (item.location || ''));
     setEditNetVal(item.monthlyNetSalary ? item.monthlyNetSalary.toString() : '');
+    setEditTaxableIncome(item.taxableIncome ? item.taxableIncome.toString() : '');
     
     if (item.type === 'rsu') {
       setEditTranches(parseRsuTranches(item));
@@ -329,7 +354,7 @@ export default function EventForm({
     if (!editYear || !editMonth || !editVal || Number(editVal) === 0) return;
 
     const isSalary = editingEvent.eventCategory === 'salary';
-    const finalCompany = editWorkType === 'Company' ? editCompany.trim() || 'Self-Employed' : editWorkType;
+    const finalCompany = editType === 'tax' ? 'Government' : (editWorkType === 'Company' ? editCompany.trim() || 'Self-Employed' : editWorkType);
     const finalDate = getCombinedDate(editYear, editMonth, editDay);
 
     if (isSalary) {
@@ -346,7 +371,7 @@ export default function EventForm({
         monthlyNetSalary: editNetVal ? Number(editNetVal) : undefined
       });
     } else {
-      let finalLocation = editLocation.trim() || undefined;
+      let finalLocation = editType === 'tax' ? undefined : (editLocation.trim() || undefined);
       if (editType === 'rsu') {
         const trancheSum = editTranches.reduce((sum, t) => sum + Number(t.amount || 0), 0);
         if (Math.abs(trancheSum - Number(editVal)) > 0.01) {
@@ -363,6 +388,8 @@ export default function EventForm({
         });
       }
 
+      const { fy, ay } = calculateFYAndAY(editYear, editMonth);
+
       onEditCompEvent({
         id: editingEvent.id,
         date: finalDate,
@@ -372,13 +399,17 @@ export default function EventForm({
         title: editTitle.trim() || getDefaultCompTitle(editType),
         company: finalCompany,
         location: finalLocation,
-        country: editCountry
+        country: editCountry,
+        taxableIncome: editType === 'tax' && editTaxableIncome ? Number(editTaxableIncome) : undefined,
+        financialYear: editType === 'tax' ? fy : undefined,
+        assessmentYear: editType === 'tax' ? ay : undefined
       });
     }
 
     setEditingEvent(null);
     setEditLocation('');
     setEditNetVal('');
+    setEditTaxableIncome('');
     setEditTranches([]);
     setActiveTab('manage');
   };
@@ -387,6 +418,7 @@ export default function EventForm({
     setEditingEvent(null);
     setEditLocation('');
     setEditNetVal('');
+    setEditTaxableIncome('');
     setActiveTab('manage');
   };
 
@@ -399,6 +431,7 @@ export default function EventForm({
   const getDefaultCompTitle = (type) => {
     if (type === 'bonus') return 'Cash Bonus';
     if (type === 'grant') return 'Grant';
+    if (type === 'tax') return 'Income Tax Paid';
     return 'Stock Vesting';
   };
 
@@ -487,7 +520,7 @@ export default function EventForm({
       {activeTab === 'add' && (
         <div style={{ flexGrow: 1, display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {/* Sub tab for form selection */}
-          <div style={{ display: 'flex', gap: '0.5rem', background: 'rgba(255,255,255,0.03)', padding: '0.25rem', borderRadius: '8px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem', background: 'rgba(255,255,255,0.03)', padding: '0.25rem', borderRadius: '8px' }}>
             <button
               className="btn"
               style={{
@@ -495,8 +528,7 @@ export default function EventForm({
                 border: formType === 'salary' ? '1px solid var(--color-primary)' : '1px solid transparent',
                 color: formType === 'salary' ? 'var(--text-primary)' : 'var(--text-secondary)',
                 fontSize: '0.85rem',
-                padding: '0.4rem',
-                flex: 1
+                padding: '0.4rem'
               }}
               onClick={() => setFormType('salary')}
             >
@@ -509,10 +541,12 @@ export default function EventForm({
                 border: formType === 'comp' ? '1px solid var(--color-primary)' : '1px solid transparent',
                 color: formType === 'comp' ? 'var(--text-primary)' : 'var(--text-secondary)',
                 fontSize: '0.85rem',
-                padding: '0.4rem',
-                flex: 1
+                padding: '0.4rem'
               }}
-              onClick={() => setFormType('comp')}
+              onClick={() => {
+                setFormType('comp');
+                if (compType === 'tax') setCompType('bonus');
+              }}
             >
               <Shield size={14} /> Bonus / Stock
             </button>
@@ -523,12 +557,27 @@ export default function EventForm({
                 border: formType === 'rsu' ? '1px solid var(--color-primary)' : '1px solid transparent',
                 color: formType === 'rsu' ? 'var(--text-primary)' : 'var(--text-secondary)',
                 fontSize: '0.85rem',
-                padding: '0.4rem',
-                flex: 1
+                padding: '0.4rem'
               }}
               onClick={() => setFormType('rsu')}
             >
               <Shield size={14} /> RSU Grant
+            </button>
+            <button
+              className="btn"
+              style={{
+                background: formType === 'tax' ? 'rgba(244, 63, 94, 0.2)' : 'transparent',
+                border: formType === 'tax' ? '1px solid var(--color-tax)' : '1px solid transparent',
+                color: formType === 'tax' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                fontSize: '0.85rem',
+                padding: '0.4rem'
+              }}
+              onClick={() => {
+                setFormType('tax');
+                setCompType('tax');
+              }}
+            >
+              <Receipt size={14} style={{ color: 'var(--color-tax)' }} /> Taxes
             </button>
           </div>
 
@@ -1119,6 +1168,141 @@ export default function EventForm({
               </button>
             </form>
           )}
+
+          {formType === 'tax' && (
+            <form onSubmit={handleCompSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div className="form-group">
+                <label><Calendar size={12} style={{ marginRight: 4 }} /> Date (Year / Month / Optional Day)</label>
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <select 
+                    value={compYear} 
+                    onChange={(e) => setCompYear(e.target.value)}
+                    style={{ flex: 2 }}
+                  >
+                    {yearsOptions.map(y => (
+                      <option key={y} value={y}>{y}</option>
+                    ))}
+                  </select>
+                  <select 
+                    value={compMonth} 
+                    onChange={(e) => setCompMonth(e.target.value)}
+                    style={{ flex: 2 }}
+                  >
+                    {monthsOptions.map(m => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                  <select 
+                    value={compDay} 
+                    onChange={(e) => setCompDay(e.target.value)}
+                    style={{ flex: 1.5 }}
+                  >
+                    <option value="">No Day</option>
+                    {daysOptions.map(d => (
+                      <option key={d} value={d}>{Number(d)}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {(() => {
+                const { fy, ay } = calculateFYAndAY(compYear, compMonth);
+                return (
+                  <>
+                    <div className="form-group">
+                      <label style={{ color: 'var(--color-tax)' }}>Taxable Income</label>
+                      <input 
+                        type="number" 
+                        step="any"
+                        placeholder="e.g. 1800000"
+                        style={{ borderColor: 'var(--color-tax)' }}
+                        value={compTaxableIncome}
+                        onChange={(e) => setCompTaxableIncome(e.target.value)}
+                      />
+                    </div>
+                    <div className="form-group" style={{ display: 'flex', gap: '1rem', background: 'rgba(255, 255, 255, 0.02)', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid rgba(244, 63, 94, 0.25)', marginBottom: '1rem' }}>
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em' }}>Financial Year</span>
+                        <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{fy || '—'}</strong>
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em' }}>Assessment Year</span>
+                        <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{ay || '—'}</strong>
+                      </div>
+                    </div>
+                  </>
+                );
+              })()}
+
+              <div className="form-group" style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ flex: 1 }}>
+                  <label style={{ color: 'var(--color-tax)' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(244, 63, 94, 0.12)', border: '1px solid rgba(244, 63, 94, 0.25)', color: 'var(--color-tax)', fontSize: '9px', fontWeight: '800', marginRight: '6px', fontFamily: 'var(--font-mono)', verticalAlign: 'middle', lineHeight: 1 }}>
+                      {getCurrencySymbol(compCurrency).trim()}
+                    </span>
+                    Direct Tax Paid ({getCurrencySymbol(compCurrency).trim()})
+                  </label>
+                  <input 
+                    type="number" 
+                    step="any"
+                    style={{ borderColor: 'var(--color-tax)' }}
+                    value={compAmount}
+                    onChange={(e) => setCompAmount(e.target.value)}
+                    required
+                  />
+                </div>
+                <div style={{ width: '95px' }}>
+                  <label>Currency</label>
+                  <select value={compCurrency} onChange={(e) => handleCompCurrencyChange(e.target.value)} style={{ height: '37px' }}>
+                    <option value="USD">USD ($)</option>
+                    <option value="INR">INR (₹)</option>
+                    <option value="GBP">GBP (£)</option>
+                    <option value="EUR">EUR (€)</option>
+                    <option value="JPY">JPY (¥)</option>
+                    <option value="CAD">CAD (CA$)</option>
+                    <option value="AUD">AUD (A$)</option>
+                    <option value="SGD">SGD (SG$)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Country (For PPP conversion)</label>
+                <select 
+                  value={compCountry} 
+                  onChange={(e) => {
+                    const selectedCountry = e.target.value;
+                    setCompCountry(selectedCountry);
+                    const found = COUNTRIES.find(c => c.code === selectedCountry);
+                    if (found) {
+                      setCompCurrency(found.defaultCurrency);
+                    }
+                  }}
+                  required
+                >
+                  {COUNTRIES.map(c => (
+                    <option key={c.code} value={c.code}>
+                      {c.flag} {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="form-group">
+                <label><Tag size={12} style={{ marginRight: 4 }} /> Description (Optional)</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. FY 2026-27 Income Tax, Capital Gains Tax"
+                  value={compTitle}
+                  onChange={(e) => setCompTitle(e.target.value)}
+                />
+              </div>
+
+              <button type="submit" className="btn" style={{ marginTop: '0.5rem', background: 'var(--color-tax)', borderColor: 'var(--color-tax)', color: '#fff', fontWeight: 600 }}>
+                <PlusCircle size={18} /> Record Tax Payment
+              </button>
+            </form>
+          )}
         </div>
       )}
 
@@ -1180,22 +1364,61 @@ export default function EventForm({
                   <option value="bonus">Cash Bonus</option>
                   <option value="grant">Grant (Patent, Stock, etc.)</option>
                   <option value="vest">Vested Stock (RSUs / Options)</option>
+                  <option value="tax">Income Tax Paid</option>
                   <option value="rsu">RSU Stock Grant</option>
                 </select>
               </div>
             )}
 
+            {editType === 'tax' && (() => {
+              const { fy, ay } = calculateFYAndAY(editYear, editMonth);
+              return (
+                <>
+                  <div className="form-group">
+                    <label>Taxable Income</label>
+                    <input 
+                      type="number" 
+                      step="any"
+                      placeholder="e.g. 1800000"
+                      value={editTaxableIncome}
+                      onChange={(e) => setEditTaxableIncome(e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group" style={{ display: 'flex', gap: '1rem', background: 'rgba(255, 255, 255, 0.02)', padding: '0.6rem 0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '1rem' }}>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em' }}>Financial Year</span>
+                      <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{fy || '—'}</strong>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em' }}>Assessment Year</span>
+                      <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)' }}>{ay || '—'}</strong>
+                    </div>
+                  </div>
+                </>
+              );
+            })()}
+
             <div className="form-group" style={{ display: 'flex', gap: '0.5rem' }}>
               <div style={{ flex: 1 }}>
-                <label>
-                  <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.25)', color: 'var(--color-primary)', fontSize: '9px', fontWeight: '800', marginRight: '6px', fontFamily: 'var(--font-mono)', verticalAlign: 'middle', lineHeight: 1 }}>
-                    {getCurrencySymbol(editCurrency).trim()}
-                  </span>
-                  {editingEvent.eventCategory === 'salary' ? 'Annual Salary Remuneration' : 'Amount / Value'} ({getCurrencySymbol(editCurrency).trim()})
-                </label>
+                {editType === 'tax' ? (
+                  <label style={{ color: 'var(--color-tax)' }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(244, 63, 94, 0.12)', border: '1px solid rgba(244, 63, 94, 0.25)', color: 'var(--color-tax)', fontSize: '9px', fontWeight: '800', marginRight: '6px', fontFamily: 'var(--font-mono)', verticalAlign: 'middle', lineHeight: 1 }}>
+                      {getCurrencySymbol(editCurrency).trim()}
+                    </span>
+                    Direct Tax Paid ({getCurrencySymbol(editCurrency).trim()})
+                  </label>
+                ) : (
+                  <label>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: '16px', height: '16px', borderRadius: '50%', background: 'rgba(99, 102, 241, 0.12)', border: '1px solid rgba(99, 102, 241, 0.25)', color: 'var(--color-primary)', fontSize: '9px', fontWeight: '800', marginRight: '6px', fontFamily: 'var(--font-mono)', verticalAlign: 'middle', lineHeight: 1 }}>
+                      {getCurrencySymbol(editCurrency).trim()}
+                    </span>
+                    {editingEvent.eventCategory === 'salary' ? 'Annual Salary Remuneration' : 'Amount / Value'} ({getCurrencySymbol(editCurrency).trim()})
+                  </label>
+                )}
                 <input 
                   type="number" 
                   step="any"
+                  style={editType === 'tax' ? { borderColor: 'var(--color-tax)' } : undefined}
                   value={editVal}
                   onChange={(e) => setEditVal(e.target.value)}
                   required
@@ -1262,45 +1485,47 @@ export default function EventForm({
               </select>
             </div>
 
-            <div className="form-group">
-              <label><Briefcase size={12} style={{ marginRight: 4 }} /> Company / Work Context</label>
-              <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.25rem' }}>
-                {['Company', 'Freelance', 'Self-Employed'].map((type) => (
-                  <button
-                    key={type}
-                    type="button"
-                    className="btn"
-                    style={{
-                      flex: 1,
-                      padding: '0.35rem 0.5rem',
-                      fontSize: '0.78rem',
-                      background: editWorkType === type ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
-                      border: editWorkType === type ? '1px solid var(--color-primary)' : '1px solid var(--border-color)',
-                      color: editWorkType === type ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    }}
-                    onClick={() => {
-                      setEditWorkType(type);
-                      if (type !== 'Company') setEditCompany(type);
-                      else setEditCompany('');
-                    }}
-                  >
-                    {type}
-                  </button>
-                ))}
+            {editType !== 'tax' && (
+              <div className="form-group">
+                <label><Briefcase size={12} style={{ marginRight: 4 }} /> Company / Work Context</label>
+                <div style={{ display: 'flex', gap: '0.4rem', marginBottom: '0.25rem' }}>
+                  {['Company', 'Freelance', 'Self-Employed'].map((type) => (
+                    <button
+                      key={type}
+                      type="button"
+                      className="btn"
+                      style={{
+                        flex: 1,
+                        padding: '0.35rem 0.5rem',
+                        fontSize: '0.78rem',
+                        background: editWorkType === type ? 'rgba(99, 102, 241, 0.15)' : 'transparent',
+                        border: editWorkType === type ? '1px solid var(--color-primary)' : '1px solid var(--border-color)',
+                        color: editWorkType === type ? 'var(--text-primary)' : 'var(--text-secondary)',
+                      }}
+                      onClick={() => {
+                        setEditWorkType(type);
+                        if (type !== 'Company') setEditCompany(type);
+                        else setEditCompany('');
+                      }}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+                {editWorkType === 'Company' && (
+                  <input
+                    type="text"
+                    placeholder="Enter Company Name (e.g. Google)"
+                    value={editCompany}
+                    onChange={(e) => setEditCompany(e.target.value)}
+                    required={editWorkType === 'Company'}
+                  />
+                )}
               </div>
-              {editWorkType === 'Company' && (
-                <input
-                  type="text"
-                  placeholder="Enter Company Name (e.g. Google)"
-                  value={editCompany}
-                  onChange={(e) => setEditCompany(e.target.value)}
-                  required={editWorkType === 'Company'}
-                />
-              )}
-            </div>
+            )}
 
             <div className="form-group">
-              <label><Briefcase size={12} style={{ marginRight: 4 }} /> Description (Optional)</label>
+              <label><Tag size={12} style={{ marginRight: 4 }} /> Description (Optional)</label>
               <input 
                 type="text" 
                 placeholder="Description"
@@ -1309,15 +1534,17 @@ export default function EventForm({
               />
             </div>
 
-            <div className="form-group">
-              <label><MapPin size={12} style={{ marginRight: 4 }} /> Location (Optional)</label>
-              <input 
-                type="text" 
-                placeholder="e.g. Remote, city, etc."
-                value={editLocation}
-                onChange={(e) => setEditLocation(e.target.value)}
-              />
-            </div>
+            {editType !== 'tax' && (
+              <div className="form-group">
+                <label><MapPin size={12} style={{ marginRight: 4 }} /> Location (Optional)</label>
+                <input 
+                  type="text" 
+                  placeholder="e.g. Remote, city, etc."
+                  value={editLocation}
+                  onChange={(e) => setEditLocation(e.target.value)}
+                />
+              </div>
+            )}
 
             {editType === 'rsu' && (
               <div style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)', padding: '0.75rem', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '0.5rem' }}>
@@ -1417,7 +1644,7 @@ export default function EventForm({
             )}
 
             <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-              <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+              <button type="submit" className="btn" style={{ flex: 1, background: editType === 'tax' ? 'var(--color-tax)' : 'var(--color-primary)', borderColor: editType === 'tax' ? 'var(--color-tax)' : 'var(--color-primary)', color: '#fff', fontWeight: 600 }}>
                 <Check size={16} /> Save Changes
               </button>
               <button type="button" onClick={cancelEdit} className="btn btn-secondary" style={{ flex: 1 }}>
@@ -1438,7 +1665,7 @@ export default function EventForm({
           ) : (
             allEventsChronological.map((item) => {
               const isSalary = item.eventCategory === 'salary';
-              const label = isSalary ? item.type : (item.type === 'rsu' ? 'RSU Grant' : item.type);
+              const label = isSalary ? item.type : (item.type === 'rsu' ? 'RSU Grant' : (item.type === 'tax' ? 'Tax Paid' : item.type));
               
               // Select class based on type
               let colorClass = 'hike';
@@ -1447,6 +1674,7 @@ export default function EventForm({
               if (item.type === 'bonus') colorClass = 'bonus';
               if (item.type === 'grant') colorClass = 'grant';
               if (item.type === 'vest') colorClass = 'vest';
+              if (item.type === 'tax') colorClass = 'tax';
               if (item.type === 'rsu') colorClass = 'vest'; // Reuse vest purple or define class
 
               const companyTag = item.company || 'Self-Employed';
@@ -1461,10 +1689,14 @@ export default function EventForm({
                         {item.title}
                       </span>
                     </div>
-                    <div className="manager-item-meta" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${formatDateLabel(item.date)} • ${isSalary ? 'Salary Remuneration' : 'Amount'}: ${formatCurrency(isSalary ? item.salary : item.amount, item.currency)}${isSalary ? '/yr' : ''}${isSalary ? ` (Gross: ${formatCurrency(item.salary / 12, item.currency)}/mo${item.monthlyNetSalary ? `, Net: ${formatCurrency(item.monthlyNetSalary, item.currency)}/mo` : ''})` : ''} • Employer: ${companyTag}${item.country ? ` • Country: ${item.country}` : ''}${itemLoc ? ` • Location: ${itemLoc}` : ''}`}>
+                    <div className="manager-item-meta" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={`${formatDateLabel(item.date)} • ${isSalary ? 'Salary Remuneration' : 'Amount'}: ${formatCurrency(isSalary ? item.salary : item.amount, item.currency)}${isSalary ? '/yr' : ''}${isSalary ? ` (Gross: ${formatCurrency(item.salary / 12, item.currency)}/mo${item.monthlyNetSalary ? `, Net: ${formatCurrency(item.monthlyNetSalary, item.currency)}/mo` : ''})` : ''}${item.type !== 'tax' ? ` • Employer: ${companyTag}` : ''}${item.country ? ` • Country: ${item.country}` : ''}${itemLoc ? ` • Location: ${itemLoc}` : ''}${item.type === 'tax' && item.financialYear ? ` • Year: ${item.financialYear}` : ''}${item.type === 'tax' && item.taxableIncome ? ` • Taxable Income: ${formatCurrency(item.taxableIncome, item.currency)}` : ''}`}>
                       {formatDateLabel(item.date)} • <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>{formatCurrency(isSalary ? item.salary : item.amount, item.currency)}</span>
-                      {isSalary && ' / yr'} • <strong style={{ color: 'var(--color-primary)' }}>{companyTag}</strong>
+                      {isSalary && ' / yr'}
+                      {item.type !== 'tax' && ` • `}
+                      {item.type !== 'tax' && <strong style={{ color: 'var(--color-primary)' }}>{companyTag}</strong>}
                       {isSalary && ` (Gross: ${formatCurrency(item.salary / 12, item.currency)}/mo${item.monthlyNetSalary ? `, Net: ${formatCurrency(item.monthlyNetSalary, item.currency)}/mo` : ''})`}
+                      {item.type === 'tax' && item.financialYear && ` • 📅 ${item.financialYear}`}
+                      {item.type === 'tax' && item.taxableIncome && ` • Taxable: ${formatCurrency(item.taxableIncome, item.currency)}`}
                       {item.country && ` • ${COUNTRIES.find(c => c.code === item.country)?.flag || ''} ${item.country}`}
                       {itemLoc && ` • 📍 ${itemLoc}`}
                     </div>

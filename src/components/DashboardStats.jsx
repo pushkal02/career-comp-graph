@@ -1,4 +1,4 @@
-import { DollarSign, Award, Percent, Layers, ShieldCheck } from 'lucide-react';
+import { DollarSign, Award, Percent, Layers, ShieldCheck, Receipt } from 'lucide-react';
 import { convertCurrency, convertToPPP, getExpandedCompEvents } from '../utils/currency';
 
 export default function DashboardStats({
@@ -134,6 +134,10 @@ export default function DashboardStats({
     .filter(e => e.type === 'vest' && e.status === 'realized')
     .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
 
+  const totalTax = expandedCompEvents
+    .filter(e => e.type === 'tax' && e.status === 'realized')
+    .reduce((sum, e) => sum + convertValue(Number(e.amount), e.currency, e.country), 0);
+
   // 4. Realized Cumulative Compensation = Base Salary Earned + Bonus + Vests
   const totalRealizedComp = cumulativeBaseEarned + totalBonus + totalVest;
 
@@ -165,6 +169,13 @@ export default function DashboardStats({
       subtext: "Realized equity value (vested over time)",
       icon: <ShieldCheck size={20} style={{ color: 'var(--color-vest)' }} />,
       className: "vest"
+    },
+    {
+      label: "Total Direct Tax Paid",
+      value: formatCurrency(totalTax),
+      subtext: "Cumulative direct income tax paid to date",
+      icon: <Receipt size={20} style={{ color: 'var(--color-tax)' }} />,
+      className: "tax"
     },
     {
       label: "Realized Career Earnings",
