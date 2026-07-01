@@ -1206,6 +1206,7 @@ export default function CompChart({
                             type: evt.type,
                             company: evt.company || 'Self-Employed',
                             country: evt.country,
+                            currency: evt.currency,
                             location: evt.location,
                             category: 'salary',
                             convertedGross: currSalary / 12,
@@ -1336,6 +1337,7 @@ export default function CompChart({
                                     type: evt.type,
                                     company: evt.company || 'Self-Employed',
                                     country: evt.country,
+                                    currency: evt.currency,
                                     location: getRsuLocation(evt),
                                     category: 'comp',
                                     taxableIncome: evt.taxableIncome,
@@ -1399,6 +1401,7 @@ export default function CompChart({
                                     type: evt.type,
                                     company: evt.company || 'Self-Employed',
                                     country: evt.country,
+                                    currency: evt.currency,
                                     location: getRsuLocation(evt),
                                     category: 'comp'
                                   });
@@ -1521,6 +1524,7 @@ export default function CompChart({
                             type: evt.type,
                             company: evt.company || 'Self-Employed',
                             country: evt.country,
+                            currency: evt.currency,
                             location: getRsuLocation(evt),
                             category: 'comp',
                             taxableIncome: evt.taxableIncome,
